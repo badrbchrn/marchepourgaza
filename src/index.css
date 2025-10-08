@@ -1,0 +1,260 @@
+@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&family=Space+Grotesk:wght@600;700&display=swap');
+
+
+/* Reset minimal */
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  font-family: 'Nunito', system-ui, sans-serif;
+  color: #222;
+  line-height: 3;
+}
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--foreground);
+  font-family: 'Poppins', sans-serif;
+
+}
+
+
+/* Variables */
+:root {
+  --accent: #16a34a; /* vert */
+  --accent-dark: #15803d;
+  --gradient-palestine: linear-gradient(90deg, #ce1126, #ffffff, #007a3d);
+  --background: #000;
+  --foreground: #fff;
+}
+
+/* Nav links */
+.nav-link {
+  color: white;
+  transition: all 0.3s ease;
+  position: relative;
+}
+.nav-link:hover {
+  color: var(--accent);
+}
+.nav-link::after {
+  content: "";
+  position: absolute;
+  bottom: -4px;
+  left: 0;
+  width: 0%;
+  height: 2px;
+  background: var(--accent);
+  transition: width 0.3s ease;
+}
+.nav-link:hover::after {
+  width: 100%;
+}
+
+/* Buttons */
+.btn-primary {
+  background: var(--accent);
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+.btn-primary:hover {
+  background: var(--accent-dark);
+  transform: translateY(-2px);
+  box-shadow: 0 8px 20px rgba(22, 163, 74, 0.4);
+}
+
+.btn-secondary {
+  border: 2px solid white;
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+.btn-secondary:hover {
+  background: white;
+  color: black;
+  transform: translateY(-2px);
+}
+
+/* Palestine logo square */
+.logo-pal {
+  width: 1.5rem;
+  height: 1.5rem;
+  background: var(--gradient-palestine);
+  border: 1px solid white;
+  border-radius: 3px;
+}
+
+
+.btn-primary {
+  background: #16a34a; /* vert accent */
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+.btn-primary:hover {
+  background: #15803d;
+  transform: translateY(-2px);
+  box-shadow: 0 10px 25px rgba(22, 163, 74, 0.4);
+}
+
+.btn-secondary {
+  border: 2px solid white;
+  color: white;
+  border-radius: 0.5rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+.btn-secondary:hover {
+  background: white;
+  color: black;
+  transform: translateY(-2px);
+}
+
+.text-gradient-primary {
+  background: linear-gradient(90deg, #ce1126, #ffffff, #007a3d);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+.btn-glow {
+  background: #16a34a;
+  color: white;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+  box-shadow: 0 0 20px rgba(22, 163, 74, 0.5);
+}
+.btn-glow:hover {
+  background: #15803d;
+  box-shadow: 0 0 30px rgba(22, 163, 74, 0.8);
+  transform: translateY(-3px);
+}
+
+.btn-outline {
+  border: 2px solid white;
+  color: white;
+  border-radius: 0.75rem;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+.btn-outline:hover {
+  background: white;
+  color: black;
+  transform: translateY(-3px);
+}
+html, body, #root {
+  height: 100%;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  background-color: #f9fafb; /* fond clair */
+  color: #111827; /* gris très foncé */
+}
+
+/* NAVIGATION */
+nav a {
+  position: relative;
+  font-weight: 500;
+  transition: color 0.3s ease;
+}
+
+nav a:hover {
+  color: #16a34a; /* vert Gaza */
+}
+
+nav a::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  bottom: -4px;
+  width: 0%;
+  height: 2px;
+  background: linear-gradient(to right, #dc2626, #111, #16a34a);
+  transition: width 0.3s ease;
+}
+
+nav a:hover::after {
+  width: 100%;
+}
+
+/* TITRES */
+h1, h2, h3, h4 {
+  font-weight: 700;
+  letter-spacing: -0.5px;
+}
+
+/* BOUTONS */
+button, .btn {
+  transition: all 0.3s ease;
+  transform: translateY(0);
+}
+
+button:hover, .btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(0,0,0,0.1);
+}
+
+/* GRADIENT TEXT */
+.text-gradient {
+  background: linear-gradient(to right, #dc2626, #111, #16a34a);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+}
+
+/* HERO VIDEO PHONE */
+.phone-mockup {
+  border-radius: 2.5rem;
+  border: 4px solid #000;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.3);
+  overflow: hidden;
+}
+
+/* ANIMATIONS */
+.fade-in {
+  opacity: 0;
+  animation: fadeIn 1s ease forwards;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes shake {
+  0%, 100% { transform: translateX(0); }
+  20% { transform: translateX(-3px); }
+  40% { transform: translateX(3px); }
+  60% { transform: translateX(-2px); }
+  80% { transform: translateX(2px); }
+}
+
+.hover-shake:hover {
+  animation: shake 0.4s ease-in-out;
+}
+
+/* Tokens/UI utils */
+.bg-card{ background-color:#fff; }
+.text-foreground{ color:#111827; }
+.border-border{ border-color:#e5e7eb; }
+.shadow-subtle{ box-shadow:0 6px 18px rgba(0,0,0,.06); }
+.shadow-medium{ box-shadow:0 10px 30px rgba(0,0,0,.10); }
+.gradient-subtle{
+  background-image: linear-gradient(180deg,#f9fafb, #ffffff);
+}
+.gradient-accent{
+  background-image: linear-gradient(90deg,#16a34a,#111827,#dc2626);
+}
+.shadow-glow{ box-shadow:0 0 24px rgba(22,163,74,.35); }
+.transition-smooth{ transition: all .25s ease; }
+.transition-bounce{ transition: transform .2s ease; }
+.bg-clean-white{ background:#fff; }
+.text-primary-dark{ color:#111827; }
+
+
+.leaflet-marker-icon.marker-inactive {
+  filter: hue-rotate(-50deg) saturate(5) brightness(0.9);
+}

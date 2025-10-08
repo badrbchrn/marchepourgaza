@@ -1,0 +1,89 @@
+# =========================
+# VITE + REACT PROJECT
+# =========================
+
+# Node modules
+node_modules/
+
+# Build outputs
+dist/
+build/
+
+# JS compiled from TS (évite les doublons)
+src/**/*.js
+
+# Local environment variables
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Log files
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+# Editor folders and files
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+*.swp
+
+# macOS system files
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# Thumbnails
+._*
+
+# Files that might appear in your cloud directories
+*.icloud
+*.icloud*
+*.icloud~*
+
+# Windows system files
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# =========================
+# SUPABASE
+# =========================
+
+# Local Supabase config
+supabase/.temp/
+supabase/.branches/
+supabase/.env
+supabase/functions/node_modules/
+
+# =========================
+# TOOLING / COMPILATION
+# =========================
+
+# TypeScript
+*.tsbuildinfo
+
+# ESLint cache
+.eslintcache
+
+# Local testing
+coverage/
+.vitest/
+*.test.ts
+*.spec.ts
+
+# =========================
+# 📦 DEPLOYMENT
+# =========================
+
+# Vercel / Netlify local folders
+.vercel/
+.netlify/
+
+
