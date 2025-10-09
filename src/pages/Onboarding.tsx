@@ -9,12 +9,13 @@ export default function Onboarding() {
   const [city, setCity] = useState("");
   const [phone, setPhone] = useState("");
   const [role, setRole] = useState("runner");
-  const [expectedKm, setExpectedKm] = useState<number>(0);
-  const [desiredPledge, setDesiredPledge] = useState<number>(0);
+  const [expectedKm, setExpectedKm] = useState("");
+  const [desiredPledge, setDesiredPledge] = useState("");
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [hasActiveSponsorship, setHasActiveSponsorship] = useState(false); // ✅ nouveau état
   const navigate = useNavigate();
 
   useEffect(() => {
@@ -37,9 +38,18 @@ export default function Onboarding() {
         setCity(profile.city ?? "");
         setPhone(profile.phone ?? "");
         setRole(profile.role ?? "runner");
-        setExpectedKm(profile.expected_km ?? 0);
-        setDesiredPledge(profile.desired_pledge ?? 0);
+        setExpectedKm(profile.expected_km > 0 ? String(profile.expected_km) : "");
+        setDesiredPledge(profile.desired_pledge > 0 ? String(profile.desired_pledge) : "");
       }
+
+      // ✅ Vérifie s’il a des parrainages actifs
+      const { data: sponsorships } = await supabase
+        .from("sponsorships")
+        .select("id")
+        .eq("runner_id", user.id)
+        .eq("status", "accepted");
+
+      setHasActiveSponsorship((sponsorships?.length || 0) > 0);
     })();
   }, [navigate]);
 
@@ -55,21 +65,61 @@ export default function Onboarding() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    const { error: profileError } = await supabase.from("profiles").upsert({
-      id: user.id,
-      email: user.email,
-      full_name: fullName,
-      city,
-      phone,
-      role,
-      expected_km: role === "runner" ? expectedKm : 0,
-      desired_pledge: role === "runner" ? desiredPledge : 0,
-    });
+    if (role === "runner") {
+      if (!expectedKm || (!desiredPledge && !hasActiveSponsorship)) {
+        showToast("error", "Veuillez remplir tous les champs obligatoires.");
+        setSaving(false);
+        return;
+      }
 
-    if (profileError) {
-      showToast("error", profileError.message);
-      setSaving(false);
-      return;
+      const expectedKmNumber = parseFloat(expectedKm);
+      const desiredPledgeNumber = parseFloat(desiredPledge);
+
+      if (
+        isNaN(expectedKmNumber) ||
+        (isNaN(desiredPledgeNumber) && !hasActiveSponsorship) ||
+        expectedKmNumber <= 0 ||
+        (!hasActiveSponsorship && desiredPledgeNumber <= 0)
+      ) {
+        showToast("error", "Les valeurs doivent être des nombres positifs.");
+        setSaving(false);
+        return;
+      }
+
+      const { error } = await supabase.from("profiles").upsert({
+        id: user.id,
+        email: user.email,
+        full_name: fullName,
+        city,
+        phone,
+        role,
+        expected_km: expectedKmNumber,
+        // ✅ Si parrainages actifs → ne pas écraser le pledge existant
+        desired_pledge: hasActiveSponsorship ? undefined : desiredPledgeNumber,
+      });
+
+      if (error) {
+        showToast("error", error.message);
+        setSaving(false);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from("profiles").upsert({
+        id: user.id,
+        email: user.email,
+        full_name: fullName,
+        city,
+        phone,
+        role,
+        expected_km: 0,
+        desired_pledge: 0,
+      });
+
+      if (error) {
+        showToast("error", error.message);
+        setSaving(false);
+        return;
+      }
     }
 
     if (!hasProfile && password.trim() !== "") {
@@ -106,7 +156,7 @@ export default function Onboarding() {
           </p>
         </motion.div>
 
-        {/* Grid form */}
+        {/* Form */}
         <div className="grid sm:grid-cols-2 gap-5">
           <AnimatedInput
             label="Nom complet"
@@ -131,6 +181,7 @@ export default function Onboarding() {
             icon={<MapPin className="w-4 h-4 text-green-500" />}
             value={city}
             onChange={(e) => setCity(e.target.value)}
+            required
           />
 
           <AnimatedInput
@@ -138,6 +189,7 @@ export default function Onboarding() {
             icon={<Phone className="w-4 h-4 text-purple-500" />}
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
+            required
           />
 
           {role === "runner" && (
@@ -146,18 +198,39 @@ export default function Onboarding() {
                 label="Km prévus"
                 icon={<Target className="w-4 h-4 text-red-500" />}
                 type="number"
+                min="1"
+                step="0.1"
                 value={expectedKm}
-                onChange={(e) => setExpectedKm(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || Number(val) >= 0) setExpectedKm(val);
+                }}
+                onFocus={(e) => e.target.select()}
+                required
+                placeholder="Ex: 180"
               />
 
               <AnimatedInput
                 label="CHF/km souhaités"
                 icon={<Coins className="w-4 h-4 text-yellow-500" />}
                 type="number"
+                min="1"
                 step="0.1"
                 value={desiredPledge}
-                onChange={(e) => setDesiredPledge(Number(e.target.value))}
+                onChange={(e) => {
+                  const val = e.target.value;
+                  if (val === "" || Number(val) >= 0) setDesiredPledge(val);
+                }}
+                onFocus={(e) => e.target.select()}
+                required
+                placeholder="Ex: 5"
+                disabled={hasActiveSponsorship} // ✅ verrouillage si parrainage actif
               />
+              {hasActiveSponsorship && (
+                <p className="text-xs text-gray-500 sm:col-span-2">
+                  Vous avez déjà des parrainages actifs — le montant par km ne peut plus être modifié.
+                </p>
+              )}
             </>
           )}
 
@@ -173,7 +246,6 @@ export default function Onboarding() {
           )}
         </div>
 
-        {/* Bouton */}
         <motion.button
           type="submit"
           disabled={saving}
@@ -187,7 +259,7 @@ export default function Onboarding() {
         </motion.button>
       </form>
 
-      {/* Toasts améliorés */}
+      {/* Toast */}
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -221,20 +293,16 @@ export default function Onboarding() {
   );
 }
 
-/* --- Composants utilitaires pour champs animés --- */
+/* --- Composants utilitaires --- */
 function AnimatedInput({ label, icon, className = "", ...props }: any) {
   return (
-    <motion.div
-      whileHover={{ scale: 1.01 }}
-      transition={{ duration: 0.2 }}
-      className={`relative ${className}`}
-    >
+    <motion.div whileHover={{ scale: 1.01 }} transition={{ duration: 0.2 }} className={`relative ${className}`}>
       <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
         {icon} {label}
       </label>
       <input
         {...props}
-        className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all"
+        className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all disabled:bg-gray-100 disabled:text-gray-500"
       />
     </motion.div>
   );
@@ -243,9 +311,7 @@ function AnimatedInput({ label, icon, className = "", ...props }: any) {
 function AnimatedSelect({ label, options, ...props }: any) {
   return (
     <motion.div whileHover={{ scale: 1.01 }} transition={{ duration: 0.2 }}>
-      <label className="block text-xs font-medium text-gray-600 mb-1">
-        {label}
-      </label>
+      <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
       <select
         {...props}
         className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all"

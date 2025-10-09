@@ -14,6 +14,7 @@ export default function Home() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [sponsorshipCount, setSponsorshipCount] = useState(0);
   const [waitingCount, setWaitingCount] = useState(0);
+  const [totalFunds, setTotalFunds] = useState<number | null>(null); // 💰 Nouveau
 
   useEffect(() => {
     const fetchData = async () => {
@@ -42,6 +43,24 @@ export default function Home() {
         (r) => !sponsoredIds?.includes(r.id)
       );
       setWaitingCount(waiting?.length || 0);
+
+      // 💰 Calcul du total des fonds potentiels
+      const { data: validSponsorships, error } = await supabase
+        .from("sponsorships")
+        .select(`
+          pledge_per_km,
+          runner:runner_id (expected_km)
+        `)
+        .eq("status", "accepted");
+
+      if (!error && validSponsorships) {
+        const total = validSponsorships.reduce((sum, s) => {
+          const km = s.runner?.expected_km || 0;
+          const pledge = s.pledge_per_km || 0;
+          return sum + km * pledge;
+        }, 0);
+        setTotalFunds(total);
+      }
     };
 
     fetchData();
@@ -71,22 +90,19 @@ export default function Home() {
 
           {/* Stats avec code couleur */}
           <div className="flex flex-wrap gap-6 pt-4">
-            <StatBox
-              value={profiles.length}
-              label="Participants inscrits"
-              color="black"
-            />
-            <StatBox
-              value={sponsorshipCount}
-              label="Parrainages validés"
-              color="green"
-            />
-            <StatBox
-              value={waitingCount}
-              label="Marcheurs en attente"
-              color="yellow"
-            />
+            <StatBox value={profiles.length} label="Participants inscrits" color="black" />
+            <StatBox value={sponsorshipCount} label="Parrainages validés !" color="green" />
+            <StatBox value={waitingCount} label="Marcheurs en attente" color="yellow" />
           </div>
+
+          {/* 💰 Affichage du montant total */}
+          {totalFunds !== null && (
+            <p className="text-sm text-gray-700 max-w-lg ">
+              Les parrainages validés représentent{" "}
+              <strong className="text-sm text-green-700 max-w-lg">{totalFunds.toFixed(2)} CHF</strong>{" "}
+              de soutien <b>potentiel</b> pour l’association !
+            </p>
+          )}
         </motion.div>
 
         {/* Vidéo téléphone */}

@@ -11,6 +11,8 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 
+
+
 export default function Participer() {
   const [user, setUser] = useState<any>(null);
   const [runners, setRunners] = useState<any[]>([]);
@@ -18,6 +20,58 @@ export default function Participer() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // --- Auto-parrainage toggle pour les marcheurs ---
+  const toggleSelfSponsorship = async () => {
+    if (!user) return showToast("error", "Connectez-vous pour utiliser cette option");
+    if (user.role !== "runner") return showToast("error", "Réservé aux marcheurs");
+
+    setProcessingId(user.id);
+
+    // Vérifie si un auto-parrainage existe déjà
+    const { data: existing, error: fetchError } = await supabase
+      .from("sponsorships")
+      .select("id, status")
+      .eq("runner_id", user.id)
+      .eq("sponsor_id", user.id)
+      .maybeSingle();
+
+    if (fetchError) {
+      showToast("error", "Erreur : " + fetchError.message);
+      setProcessingId(null);
+      return;
+    }
+
+    // S’il existe → le supprimer (désactivation)
+    if (existing) {
+      const { error: deleteError } = await supabase
+        .from("sponsorships")
+        .delete()
+        .eq("id", existing.id);
+
+      if (deleteError) showToast("error", "Erreur : " + deleteError.message);
+      else showToast("info", "Auto-parrainage annulé");
+      await fetchData();
+      setProcessingId(null);
+      return;
+    }
+
+    // Sinon → création (activation)
+    const { error: insertError } = await supabase.from("sponsorships").insert({
+      sponsor_id: user.id,
+      runner_id: user.id,
+      pledge_per_km: user.desired_pledge || 1,
+      max_amount: (user.desired_pledge || 1) * (user.expected_km || 0),
+      status: "accepted",
+    });
+
+    if (insertError) showToast("error", "Erreur : " + insertError.message);
+    else showToast("success", "Auto-parrainage activé !");
+    await fetchData();
+    setProcessingId(null);
+  };
+
+
 
   // --- Chargement des données principales ---
   const fetchData = async () => {
@@ -140,8 +194,8 @@ export default function Participer() {
   // --- Envoyer une demande de parrainage ---
   const sendSponsorshipRequest = async (runnerId: string) => {
     if (!user) return showToast("error", "Connectez-vous pour parrainer un marcheur");
-    if (user.role === "runner") return showToast("error", "Seuls les parrains peuvent parrainer un marcheur");
-    if (runnerId === user.id) return showToast("error", "Vous ne pouvez pas vous parrainer vous-même");
+    
+    if (runnerId === user.id) return toggleSelfSponsorship();
 
     setProcessingId(runnerId);
     const runner = runners.find((r) => r.id === runnerId);
@@ -268,6 +322,44 @@ export default function Participer() {
 
       {/* --- SECTIONS --- */}
       <div className="flex flex-col gap-8 md:gap-10 max-w-7xl mx-auto">
+        {/* ✅ Toggle auto-parrainage */}
+        {user?.role === "runner" && (
+          <div className="text-center mb-6">
+            {(() => {
+              const selfSponsor = sponsorships.find(
+                (s) => s.runner?.id === user.id && s.sponsor?.id === user.id
+              );
+              const active = !!selfSponsor;
+
+              return (
+                <>
+                  <button
+                    onClick={toggleSelfSponsorship}
+                    disabled={processingId === user.id}
+                    className={`px-5 py-2.5 rounded-xl font-semibold shadow-md transition-all ${
+                      active
+                        ? "bg-red-600 text-white hover:bg-red-700"
+                        : "bg-gradient-to-r from-green-600 via-black to-red-600 text-white hover:brightness-110"
+                    }`}
+                  >
+                    {processingId === user.id
+                      ? "..."
+                      : active
+                      ? "Annuler l’auto-parrainage"
+                      : "Activer l’auto-parrainage"}
+                  </button>
+                  <p className="text-xs text-gray-500 mt-1">
+                    {active
+                      ? "(Tu es actuellement ton propre parrain)"
+                      : "(Permet de te soutenir symboliquement toi-même)"}
+                  </p>
+                </>
+              );
+            })()}
+          </div>
+        )}
+
+
         <Section
           title="Marcheurs/Marcheuses disponibles"
           icon={<Users className="w-5 h-5" />}
@@ -275,7 +367,7 @@ export default function Participer() {
         >
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
             {runners.map((runner) => {
-              // ❌ On ne cache plus les coureurs déjà parrainés
+              // On ne cache plus les coureurs déjà parrainés
               const alreadySponsoredByMe = sponsorships.some(
                 (s) =>
                   s.runner?.id === runner.id &&
@@ -339,55 +431,53 @@ export default function Participer() {
                     </div>
                   )}
 
-                  {user?.role !== "runner" && (
-                    <button
-                      onClick={() => sendSponsorshipRequest(runner.id)}
-                      disabled={
-                        processingId === runner.id ||
-                        sponsorships.some(
-                          (s) =>
-                            s.runner?.id === runner.id &&
-                            s.sponsor?.id === user?.id &&
-                            ["pending", "accepted"].includes(s.status)
-                        )
-                      }
-                      className={`w-full py-2 rounded-lg font-semibold shadow-md text-sm transition-all ${
-                        sponsorships.some(
-                          (s) =>
-                            s.runner?.id === runner.id &&
-                            s.sponsor?.id === user?.id &&
-                            s.status === "accepted"
-                        )
-                          ? "bg-green-600 text-white cursor-default"
-                          : sponsorships.some(
-                              (s) =>
-                                s.runner?.id === runner.id &&
-                                s.sponsor?.id === user?.id &&
-                                s.status === "pending"
-                            )
-                          ? "bg-gray-200 text-gray-500 cursor-not-allowed"
-                          : "bg-gradient-to-r from-green-600 via-black to-red-600 text-white hover:brightness-110"
-                      }`}
-                    >
-                      {processingId === runner.id
-                        ? "..."
-                        : sponsorships.some(
-                            (s) =>
-                              s.runner?.id === runner.id &&
-                              s.sponsor?.id === user?.id &&
-                              s.status === "accepted"
-                          )
-                        ? "Parrainé !"
+                  <button
+                    onClick={() => sendSponsorshipRequest(runner.id)}
+                    disabled={
+                      processingId === runner.id ||
+                      sponsorships.some(
+                        (s) =>
+                          s.runner?.id === runner.id &&
+                          s.sponsor?.id === user?.id &&
+                          ["pending", "accepted"].includes(s.status)
+                      )
+                    }
+                    className={`w-full py-2 rounded-lg font-semibold shadow-md text-sm transition-all ${
+                      sponsorships.some(
+                        (s) =>
+                          s.runner?.id === runner.id &&
+                          s.sponsor?.id === user?.id &&
+                          s.status === "accepted"
+                      )
+                        ? "bg-green-600 text-white cursor-default"
                         : sponsorships.some(
                             (s) =>
                               s.runner?.id === runner.id &&
                               s.sponsor?.id === user?.id &&
                               s.status === "pending"
                           )
-                        ? "Demande envoyée"
-                        : "Parrainer"}
-                    </button>
-                  )}
+                        ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                        : "bg-gradient-to-r from-green-600 via-black to-red-600 text-white hover:brightness-110"
+                    }`}
+                  >
+                    {processingId === runner.id
+                      ? "..."
+                      : sponsorships.some(
+                          (s) =>
+                            s.runner?.id === runner.id &&
+                            s.sponsor?.id === user?.id &&
+                            s.status === "accepted"
+                        )
+                      ? "Parrainé !"
+                      : sponsorships.some(
+                          (s) =>
+                            s.runner?.id === runner.id &&
+                            s.sponsor?.id === user?.id &&
+                            s.status === "pending"
+                        )
+                      ? "Demande envoyée"
+                      : "Parrainer"}
+                  </button>
 
                 </motion.div>
               );
