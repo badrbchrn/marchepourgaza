@@ -418,10 +418,6 @@ export default function Participer() {
                     </p>
                   </div>
 
-             
-
-                 
-
                   {/* Liste des parrains */}
                   {(agg.accepted.length > 0 || agg.pending.length > 0) && (
                     <div className="mb-3">
