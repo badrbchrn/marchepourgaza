@@ -20,6 +20,8 @@ export default function Participer() {
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+  const MAIN_RUNNER_ID = import.meta.env.VITE_LYAN_ID;
+
 
   // --- Auto-parrainage toggle pour les marcheurs ---
   const toggleSelfSponsorship = async () => {
@@ -147,8 +149,12 @@ export default function Participer() {
         return { data: updated };
       });
 
-
-    setRunners(runnersData || []);
+    const sortedRunners = (runnersData || []).sort((a, b) => {
+      if (a.id === MAIN_RUNNER_ID) return -1;
+      if (b.id === MAIN_RUNNER_ID) return 1;
+      return 0;
+    });
+    setRunners(sortedRunners);
     setSponsorships(allSponsorships || sponsorshipData || []); // on privilégie la vision complète pour l'UI
     setLoading(false);
   };
@@ -380,20 +386,41 @@ export default function Participer() {
               return (
                 <motion.div
                   key={runner.id}
-                  whileHover={{ scale: 1.01 }}
-                  transition={{ duration: 0.2 }}
-                  className="p-4 sm:p-5 rounded-2xl bg-white/70 backdrop-blur-md shadow-sm border border-gray-200 hover:shadow-lg transition-all w-full"
+                  whileHover={{ scale: 1.02 }}
+                  transition={{ duration: 0.25 }}
+                  className={`relative p-4 sm:p-5 rounded-2xl backdrop-blur-md shadow-sm border transition-all w-full 
+                    ${
+                      runner.id === MAIN_RUNNER_ID
+                        ? "bg-gradient-to-br from-yellow-50 via-white to-yellow-100 border-yellow-400 shadow-yellow-100 hover:shadow-yellow-200"
+                        : "bg-white/70 border-gray-200 hover:shadow-lg"
+                    }`}
                 >
+                  {/* 🌟 Badge spécial pour le marcheur principal */}
+                  {runner.id === MAIN_RUNNER_ID && (
+                    <div className="absolute top-2 right-3 text-[11px] font-semibold text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full shadow-sm border border-yellow-200">
+                      🌟 Marcheur principal
+                    </div>
+                  )}
+
+                  {/* Contenu normal */}
                   <div className="mb-3">
-                    <p className="font-semibold text-gray-900 text-lg">{runner.full_name}</p>
-                    <p className="text-sm text-gray-500">{runner.city}</p>
-                    <p className="text-sm text-gray-600">
-                      Objectif : {runner.expected_km} km
+                    <p
+                      className={`font-semibold text-lg ${
+                        runner.id === MAIN_RUNNER_ID ? "text-yellow-700" : "text-gray-900"
+                      }`}
+                    >
+                      {runner.full_name}
                     </p>
+                    <p className="text-sm text-gray-500">{runner.city}</p>
+                    <p className="text-sm text-gray-600">Objectif : {runner.expected_km} km</p>
                     <p className="text-sm text-gray-600">
                       Souhaite : {runner.desired_pledge} CHF/km
                     </p>
                   </div>
+
+             
+
+                 
 
                   {/* Liste des parrains */}
                   {(agg.accepted.length > 0 || agg.pending.length > 0) && (
