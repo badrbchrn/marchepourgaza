@@ -14,18 +14,29 @@ export default function Onboarding() {
   const [password, setPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [hasProfile, setHasProfile] = useState(false);
+  const [hasActiveSponsorship, setHasActiveSponsorship] = useState(false);
   const [toast, setToast] = useState<{ type: "success" | "error"; message: string } | null>(null);
-  const [hasActiveSponsorship, setHasActiveSponsorship] = useState(false); // ✅ nouveau état
   const navigate = useNavigate();
 
+  // --- Initialisation ---
   useEffect(() => {
     (async () => {
       const { data: { user } } = await supabase.auth.getUser();
+
       if (!user) {
         navigate("/login");
         return;
       }
 
+      // Bloque les utilisateurs non confirmés (ceux qui n'ont pas cliqué sur le lien magique)
+      if (!user.email_confirmed_at) {
+        showToast("error", "Veuillez confirmer votre adresse e-mail avant de continuer.");
+        await supabase.auth.signOut();
+        navigate("/login");
+        return;
+      }
+
+      // Récupère le profil s’il existe
       const { data: profile } = await supabase
         .from("profiles")
         .select("*")
@@ -42,7 +53,7 @@ export default function Onboarding() {
         setDesiredPledge(profile.desired_pledge > 0 ? String(profile.desired_pledge) : "");
       }
 
-      // ✅ Vérifie s’il a des parrainages actifs
+      // Vérifie les parrainages actifs
       const { data: sponsorships } = await supabase
         .from("sponsorships")
         .select("id")
@@ -53,11 +64,17 @@ export default function Onboarding() {
     })();
   }, [navigate]);
 
+  // --- Toast helper ---
   const showToast = (type: "success" | "error", message: string) => {
     setToast({ type, message });
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), 3500);
   };
 
+  // --- Validation helpers ---
+  const phoneRegex = /^\+?[0-9\s\-]{6,20}$/;
+  const cityRegex = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,50}$/;
+
+  // --- Sauvegarde du profil ---
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
     setSaving(true);
@@ -65,96 +82,108 @@ export default function Onboarding() {
     const { data: { user } } = await supabase.auth.getUser();
     if (!user) return;
 
-    if (role === "runner") {
-      if (!expectedKm || (!desiredPledge && !hasActiveSponsorship)) {
-        showToast("error", "Veuillez remplir tous les champs obligatoires.");
-        setSaving(false);
-        return;
-      }
-
-      const expectedKmNumber = parseFloat(expectedKm);
-      const desiredPledgeNumber = parseFloat(desiredPledge);
-
-      if (
-        isNaN(expectedKmNumber) ||
-        (isNaN(desiredPledgeNumber) && !hasActiveSponsorship) ||
-        expectedKmNumber <= 0 ||
-        (!hasActiveSponsorship && desiredPledgeNumber <= 0)
-      ) {
-        showToast("error", "Les valeurs doivent être des nombres positifs.");
-        setSaving(false);
-        return;
-      }
-
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
-        email: user.email,
-        full_name: fullName,
-        city,
-        phone,
-        role,
-        expected_km: expectedKmNumber,
-        // ✅ Si parrainages actifs → ne pas écraser le pledge existant
-        desired_pledge: hasActiveSponsorship ? undefined : desiredPledgeNumber,
-      });
-
-      if (error) {
-        showToast("error", error.message);
-        setSaving(false);
-        return;
-      }
-    } else {
-      const { error } = await supabase.from("profiles").upsert({
-        id: user.id,
-        email: user.email,
-        full_name: fullName,
-        city,
-        phone,
-        role,
-        expected_km: 0,
-        desired_pledge: 0,
-      });
-
-      if (error) {
-        showToast("error", error.message);
-        setSaving(false);
-        return;
-      }
+    // 🚫 Vérifie si l'email est bien confirmé
+    if (!user.email_confirmed_at) {
+      showToast("error", "Veuillez confirmer votre email avant de continuer.");
+      setSaving(false);
+      return;
     }
 
-    if (!hasProfile && password.trim() !== "") {
-      const { error: pwdError } = await supabase.auth.updateUser({ password });
-      if (pwdError) {
-        showToast("error", "Erreur mot de passe : " + pwdError.message);
-        setSaving(false);
-        return;
-      }
+    // --- Validations côté client ---
+    if (!fullName.trim()) {
+      showToast("error", "Veuillez indiquer votre nom complet.");
+      setSaving(false);
+      return;
+    }
+    if (!cityRegex.test(city)) {
+      showToast("error", "Nom de ville invalide.");
+      setSaving(false);
+      return;
+    }
+    if (!phoneRegex.test(phone)) {
+      showToast("error", "Numéro de téléphone invalide.");
+      setSaving(false);
+      return;
     }
 
-    setSaving(false);
-    showToast("success", "Profil enregistré avec succès !");
-    setTimeout(() => navigate("/dashboard"), 1000);
+    try {
+      if (role === "runner") {
+        if (!expectedKm || (!desiredPledge && !hasActiveSponsorship)) {
+          showToast("error", "Veuillez remplir tous les champs obligatoires.");
+          setSaving(false);
+          return;
+        }
+
+        const expectedKmNumber = parseFloat(expectedKm);
+        const desiredPledgeNumber = parseFloat(desiredPledge);
+
+        if (
+          isNaN(expectedKmNumber) ||
+          expectedKmNumber <= 0 ||
+          expectedKmNumber > 180
+        ) {
+          showToast("error", "Veuillez entrer un nombre de kilomètres valide. (1-180km)");
+          setSaving(false);
+          return;
+        }
+
+        const { error } = await supabase.from("profiles").upsert({
+          id: user.id,
+          email: user.email,
+          full_name: fullName.trim(),
+          city: city.trim(),
+          phone: phone.trim(),
+          role,
+          expected_km: expectedKmNumber,
+          desired_pledge: hasActiveSponsorship ? undefined : desiredPledgeNumber,
+        });
+
+        if (error) throw error;
+      } else {
+        const { error } = await supabase.from("profiles").upsert({
+          id: user.id,
+          email: user.email,
+          full_name: fullName.trim(),
+          city: city.trim(),
+          phone: phone.trim(),
+          role,
+          expected_km: 0,
+          desired_pledge: 0,
+        });
+
+        if (error) throw error;
+      }
+
+      if (!hasProfile && password.trim() !== "") {
+        const { error: pwdError } = await supabase.auth.updateUser({ password });
+        if (pwdError) throw pwdError;
+      }
+
+      showToast("success", "Profil enregistré avec succès !");
+      setTimeout(() => navigate("/dashboard"), 1200);
+    } catch {
+      showToast("error", "Une erreur est survenue, veuillez réessayer.");
+    } finally {
+      setSaving(false);
+    }
   };
 
+  // --- UI ---
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-50 via-white to-gray-100 px-4 -mt-10">
       <form
         onSubmit={handleSave}
-        className="w-full max-w-3xl bg-white shadow-xl rounded-2xl p-8 space-y-6 border border-gray-200 backdrop-blur-sm"
+        className="w-full max-w-3xl bg-white shadow-md rounded-2xl p-8 space-y-6 border border-gray-200"
       >
         {/* Header */}
-        <motion.div
-          className="text-center mb-4"
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-        >
+        <div className="text-center mb-4">
           <h1 className="text-3xl font-extrabold text-gray-900">
             {hasProfile ? "Modifier mon profil" : "Compléter votre profil"}
           </h1>
           <p className="text-gray-500 text-sm mt-1">
-            Ces infos permettent d’afficher votre profil et de faciliter le parrainage.
+            Ces informations permettent d’afficher votre profil et de faciliter le parrainage.
           </p>
-        </motion.div>
+        </div>
 
         {/* Form */}
         <div className="grid sm:grid-cols-2 gap-5">
@@ -179,6 +208,9 @@ export default function Onboarding() {
           <AnimatedInput
             label="Ville"
             icon={<MapPin className="w-4 h-4 text-green-500" />}
+            type="text"
+            pattern="^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,50}$"
+            title="Entrez une ville valide"
             value={city}
             onChange={(e) => setCity(e.target.value)}
             required
@@ -187,6 +219,11 @@ export default function Onboarding() {
           <AnimatedInput
             label="Téléphone"
             icon={<Phone className="w-4 h-4 text-purple-500" />}
+            type="tel"
+            inputMode="tel"
+            pattern="^\+?[0-9\s\-]{6,20}$"
+            title="Format valide : +41 76 123 45 67"
+            placeholder="+41 76 123 45 67"
             value={phone}
             onChange={(e) => setPhone(e.target.value)}
             required
@@ -199,13 +236,10 @@ export default function Onboarding() {
                 icon={<Target className="w-4 h-4 text-red-500" />}
                 type="number"
                 min="1"
+                max="180"
                 step="0.1"
                 value={expectedKm}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "" || Number(val) >= 0) setExpectedKm(val);
-                }}
-                onFocus={(e) => e.target.select()}
+                onChange={(e) => setExpectedKm(e.target.value)}
                 required
                 placeholder="Ex: 180"
               />
@@ -217,15 +251,12 @@ export default function Onboarding() {
                 min="1"
                 step="0.1"
                 value={desiredPledge}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "" || Number(val) >= 0) setDesiredPledge(val);
-                }}
-                onFocus={(e) => e.target.select()}
-                required
+                onChange={(e) => setDesiredPledge(e.target.value)}
+                required={!hasActiveSponsorship}
                 placeholder="Ex: 5"
-                disabled={hasActiveSponsorship} // ✅ verrouillage si parrainage actif
+                disabled={hasActiveSponsorship}
               />
+
               {hasActiveSponsorship && (
                 <p className="text-xs text-gray-500 sm:col-span-2">
                   Vous avez déjà des parrainages actifs — le montant par km ne peut plus être modifié.
@@ -249,13 +280,14 @@ export default function Onboarding() {
         <motion.button
           type="submit"
           disabled={saving}
-          className="relative w-full mt-4 bg-gray-900 text-white py-3 rounded-lg font-semibold shadow-md overflow-hidden group disabled:opacity-50"
+          className="w-full mt-4 bg-gray-900 text-white py-3 rounded-lg font-semibold hover:bg-gray-800 transition disabled:opacity-50"
           whileHover={{ scale: 1.01 }}
         >
-          <span className="relative z-10">
-            {saving ? "Enregistrement..." : hasProfile ? "Enregistrer les modifications" : "Enregistrer et continuer"}
-          </span>
-          <span className="absolute inset-0 bg-gradient-to-r from-green-600 via-black to-red-600 opacity-0 group-hover:opacity-100 transition-opacity duration-700 ease-in-out" />
+          {saving
+            ? "Enregistrement..."
+            : hasProfile
+            ? "Enregistrer les modifications"
+            : "Enregistrer et continuer"}
         </motion.button>
       </form>
 
@@ -267,24 +299,19 @@ export default function Onboarding() {
             initial={{ opacity: 0, y: -20 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -20 }}
-            className={`fixed top-6 right-6 px-5 py-3 rounded-xl shadow-2xl border text-white backdrop-blur-lg z-50 ${
+            className={`fixed top-6 right-6 px-4 py-2 rounded-md shadow-md text-sm z-50 font-medium ${
               toast.type === "success"
-                ? "bg-gradient-to-r from-green-600 via-emerald-500 to-green-700 border-green-400/30"
-                : "bg-gradient-to-r from-red-600 via-rose-500 to-red-700 border-red-400/30"
+                ? "bg-green-600 text-white"
+                : "bg-red-600 text-white"
             }`}
           >
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-2">
               {toast.type === "success" ? (
-                <CheckCircle className="w-6 h-6 text-white/90" />
+                <CheckCircle className="w-4 h-4" />
               ) : (
-                <XCircle className="w-6 h-6 text-white/90" />
+                <XCircle className="w-4 h-4" />
               )}
-              <div>
-                <p className="font-semibold">
-                  {toast.type === "success" ? "Succès" : "Erreur"}
-                </p>
-                <p className="text-sm text-white/90">{toast.message}</p>
-              </div>
+              <span>{toast.message}</span>
             </div>
           </motion.div>
         )}
@@ -302,7 +329,7 @@ function AnimatedInput({ label, icon, className = "", ...props }: any) {
       </label>
       <input
         {...props}
-        className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all disabled:bg-gray-100 disabled:text-gray-500"
+        className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition disabled:bg-gray-100 disabled:text-gray-500"
       />
     </motion.div>
   );
@@ -314,7 +341,7 @@ function AnimatedSelect({ label, options, ...props }: any) {
       <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
       <select
         {...props}
-        className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition-all"
+        className="w-full p-2 rounded-md border border-gray-300 text-sm focus:ring-2 focus:ring-green-600 focus:border-green-600 transition"
       >
         {options.map((opt: any) => (
           <option key={opt.value} value={opt.value}>

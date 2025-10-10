@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { motion } from "framer-motion";
-import { Mail, ShieldCheck } from "lucide-react";
+import { Mail, ShieldCheck,Sparkles } from "lucide-react";
 
 export default function Signup() {
   const [email, setEmail] = useState("");
@@ -79,9 +79,30 @@ export default function Signup() {
           whileTap={{ scale: 0.97 }}
           type="submit"
           disabled={loading}
-          className="w-full py-3 rounded-xl font-semibold text-white shadow-md transition-all bg-gradient-to-r from-green-600 via-black to-red-600 hover:brightness-110 disabled:opacity-50"
+          className={`
+            relative w-full py-2.5 md:py-3 rounded-lg font-semibold text-white 
+            transition-all shadow-md flex items-center justify-center gap-2
+            bg-gradient-to-r from-green-600 via-black to-red-600
+            hover:brightness-110 disabled:opacity-50
+          `}
         >
-          {loading ? "Envoi du lien..." : "Recevoir le lien magique"}
+          {/* Icône magique */}
+          <motion.span
+            initial={{ rotate: -10, scale: 0.9, opacity: 0.7 }}
+            animate={{ rotate: 0, scale: 1, opacity: 1 }}
+            transition={{ duration: 0.4 }}
+            className="flex items-center"
+          >
+            
+          </motion.span>
+
+          {/* Texte dynamique */}
+          <span className="tracking-wide text-sm md:text-base">
+            {loading ? "Envoi du lien..." : "Recevoir le lien magique"}
+          </span>
+          <Sparkles className="w-4 h-4 md:w-5 md:h-5 text-yellow-300" />
+          {/* Effet de brillance subtile */}
+          <span className="absolute inset-0 rounded-lg bg-gradient-to-r from-transparent via-white/10 to-transparent opacity-0 hover:opacity-60 transition-opacity duration-700"></span>
         </motion.button>
 
         {/* Footer info */}
