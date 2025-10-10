@@ -212,13 +212,14 @@ export default function Marche() {
           </div>
 
                 
-          <div className="h-[58vh] w-full">
+          <div className="relative w-full h-[60vh] md:h-[65vh] lg:h-[70vh]">
             <MapContainer
-              center={[46.3, 6.55]}  // ← centre géographique du Léman
-              zoom={9}               // ← bon zoom pour voir tout le lac
+              center={[46.3, 6.55]}
+              zoom={9}
               scrollWheelZoom={true}
-              className="h-[450px] w-full rounded-2xl overflow-hidden shadow"
+              className="absolute inset-0 rounded-2xl overflow-hidden shadow"
             >
+
               <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
 
               {/* Contour précis + remplissage sobre */}
@@ -296,9 +297,43 @@ export default function Marche() {
         <h3 className="text-center text-2xl md:text-3xl font-extrabold mb-2">
           Étapes et heures de passage
         </h3>
-        <p className="text-center text-gray-500 text-sm">Faites glisser de gauche à droite pour découvrir les étapes</p>
 
-        <div className="relative mt-6 flex overflow-x-auto no-scrollbar space-x-5 py-6">
+        {/* Indication de slide */}
+        <div className="flex items-center justify-center gap-2 text-gray-500 mb-3 text-sm">
+          <motion.span
+            animate={{ x: [0, 8, 0] }}
+            transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              className="w-4 h-4 text-gray-400"
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
+            </svg>
+          </motion.span>
+          <span>Faites glisser ou utilisez la molette pour explorer les étapes</span>
+        </div>
+
+        {/* TIMELINE défilable */}
+        <div
+          className="relative mt-6 flex overflow-x-auto no-scrollbar space-x-5 py-6 cursor-grab"
+          onWheel={(e) => {
+            // Si la souris est au-dessus de la section, on bloque le scroll vertical
+            e.preventDefault();
+            e.stopPropagation();
+
+            // Et on défile horizontalement à la place
+            e.currentTarget.scrollLeft += e.deltaY;
+          }}
+          onMouseDown={(e) => e.currentTarget.classList.add("grabbing")}
+          onMouseUp={(e) => e.currentTarget.classList.remove("grabbing")}
+          onMouseLeave={(e) => e.currentTarget.classList.remove("grabbing")}
+        >
+          {/* Ligne de progression */}
           <div className="pointer-events-none absolute left-0 right-0 top-[58%] h-[2px] -z-10 bg-gradient-to-r from-green-700 via-black to-red-700 opacity-40"></div>
 
           {ETAPES.map((e, i) => (
@@ -322,7 +357,9 @@ export default function Marche() {
             </motion.div>
           ))}
         </div>
+
       </motion.section>
+
 
       {/* CTA – raffiné */}
       <motion.section className="mx-auto mb-16 max-w-7xl px-6" {...fadeUp(0.05)}>

@@ -1,24 +1,38 @@
 import { Link } from "react-router-dom";
-import { Heart, Users, Globe, CheckCircle } from "lucide-react";
+import {
+  Heart,
+  Users,
+  Globe,
+  CheckCircle,
+  ArrowRight,
+  Sparkles,
+  Handshake,
+} from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-// --- Animations ---
+/* ---------------- Animations ---------------- */
 const fadeUp = {
   hidden: { opacity: 0, y: 40 },
   visible: { opacity: 1, y: 0, transition: { duration: 0.6 } },
+};
+const stagger = {
+  hidden: {},
+  visible: { transition: { staggerChildren: 0.08 } },
 };
 
 export default function Home() {
   const [profiles, setProfiles] = useState<any[]>([]);
   const [sponsorshipCount, setSponsorshipCount] = useState(0);
   const [waitingCount, setWaitingCount] = useState(0);
-  const [totalFunds, setTotalFunds] = useState<number | null>(null); // 💰 Nouveau
+  const [totalFunds, setTotalFunds] = useState<number | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
-      const { data: profilesData } = await supabase.from("profiles").select("id, role");
+      const { data: profilesData } = await supabase
+        .from("profiles")
+        .select("id, role");
       setProfiles(profilesData || []);
 
       const { count: accepted } = await supabase
@@ -44,16 +58,18 @@ export default function Home() {
       );
       setWaitingCount(waiting?.length || 0);
 
-      // 💰 Calcul du total des fonds potentiels
-      const { data: validSponsorships, error } = await supabase
+      // 💰 Total potentiel
+      const { data: validSponsorships } = await supabase
         .from("sponsorships")
-        .select(`
+        .select(
+          `
           pledge_per_km,
           runner:runner_id (expected_km)
-        `)
+        `
+        )
         .eq("status", "accepted");
 
-      if (!error && validSponsorships) {
+      if (validSponsorships) {
         const total = validSponsorships.reduce((sum, s) => {
           const km = s.runner?.expected_km || 0;
           const pledge = s.pledge_per_km || 0;
@@ -68,7 +84,7 @@ export default function Home() {
 
   return (
     <div className="flex flex-col min-h-screen bg-white">
-      {/* HERO */}
+      {/* ---------------- HERO (conservé) ---------------- */}
       <motion.section
         initial="hidden"
         animate="visible"
@@ -76,7 +92,10 @@ export default function Home() {
         className="min-h-[calc(100vh-80px)] flex flex-col md:flex-row items-center justify-between px-6 md:px-16 lg:px-24 bg-gradient-to-br from-gray-100 via-white to-gray-50 py-16"
       >
         {/* Texte d’intro */}
-        <motion.div variants={fadeUp} className="flex-1 text-left space-y-6 md:pr-12">
+        <motion.div
+          variants={fadeUp}
+          className="flex-1 text-left space-y-6 md:pr-12"
+        >
           <h1 className="text-4xl md:text-6xl font-extrabold leading-tight text-gray-900">
             Marche solidaire <br /> autour du Léman <br />
             <span className="bg-gradient-to-r from-red-600 via-black to-green-600 bg-clip-text text-transparent">
@@ -88,24 +107,45 @@ export default function Home() {
             et soutenez Gaza grâce à vos pas et vos parrains.
           </p>
 
-          {/* Stats avec code couleur */}
-          <div className="flex flex-wrap gap-6 pt-4">
-            <StatBox value={profiles.length} label="Participants inscrits" color="black" />
-            <StatBox value={sponsorshipCount} label="Parrainages validés !" color="green" />
-            <StatBox value={waitingCount} label="Marcheurs en attente" color="yellow" />
-          </div>
+          {/* KPIs raffinés */}
+          <motion.div
+            variants={stagger}
+            initial="hidden"
+            animate="visible"
+            className="grid grid-cols-3 gap-4 max-w-xl"
+          >
+            <KPI value={profiles.length} label="Participants" tone="ink" />
+            <KPI value={sponsorshipCount} label="Parrainages" tone="success" />
+            <KPI value={waitingCount} label="En attente" tone="warning" />
+          </motion.div>
 
-          {/* 💰 Affichage du montant total */}
+          {/* 💰 Total potentiel */}
           {totalFunds !== null && (
-            <p className="text-sm text-gray-700 max-w-lg ">
+            <p className="text-sm text-gray-700/90 max-w-lg">
               Les parrainages validés représentent{" "}
-              <strong className="text-sm text-green-700 max-w-lg">{totalFunds.toFixed(2)} CHF</strong>{" "}
-              de soutien <b>potentiel</b> pour l’association !
+              <strong className="text-green-700">
+                {totalFunds.toFixed(2)} CHF
+              </strong>{" "}
+              de soutien <b>potentiel</b> pour l’association.
             </p>
           )}
+
+          {/* CTA principal */}
+          <div className="pt-2">
+            <Link
+              to="/participer"
+              className="group inline-flex items-center gap-2 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
+            >
+              <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm md:text-base font-semibold text-slate-900 ring-1 ring-black/5 shadow-sm group-hover:shadow-md">
+                <Handshake className="h-4 w-4 text-emerald-600" />
+                Participer maintenant
+                <ArrowRight className="h-4 w-4 opacity-70 group-hover:translate-x-0.5 transition" />
+              </span>
+            </Link>
+          </div>
         </motion.div>
 
-        {/* Vidéo téléphone */}
+        {/* Vidéo téléphone (inchangée) */}
         <motion.div
           variants={fadeUp}
           className="flex-1 flex justify-center mt-12 md:mt-0"
@@ -122,15 +162,6 @@ export default function Home() {
               controls
               className="w-full h-full object-cover"
             />
-            <style jsx>{`
-              video::-webkit-media-controls {
-                opacity: 0;
-                transition: opacity 0.4s ease;
-              }
-              .group:hover video::-webkit-media-controls {
-                opacity: 1;
-              }
-            `}</style>
             <div className="absolute inset-0 bg-gradient-to-t from-black/10 via-transparent to-white/5 pointer-events-none"></div>
           </div>
         </motion.div>
@@ -138,41 +169,48 @@ export default function Home() {
 
       <SectionDivider color="gaza" />
 
-      {/* COMMENT ÇA MARCHE */}
+      {/* ---------------- Comment ça marche ---------------- */}
       <motion.section
         initial="hidden"
         whileInView="visible"
         variants={fadeUp}
-        className="py-20 bg-white border-t border-gray-100"
+        viewport={{ once: true, amount: 0.3 }}
+        className="py-18 md:py-20 bg-white"
       >
-        <div className="max-w-5xl mx-auto px-6 text-center space-y-12">
-          <motion.h2 className="text-3xl font-extrabold text-gray-900 mb-6">
+        <div className="max-w-6xl mx-auto px-6 text-center">
+          <motion.h2 className="text-3xl font-extrabold text-gray-900 mb-2">
             Comment ça marche ?
           </motion.h2>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-10">
+          <p className="text-gray-600 mb-10">
+            Inscrivez-vous, trouvez des parrains, et marchez pour une cause
+            juste. Simple et transparent.
+          </p>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-8">
             <Step
               number="1"
               title="Je m’inscris"
-              text="Créez votre profil en quelques secondes pour rejoindre la marche."
+              text="Créez votre profil pour rejoindre la marche."
             />
             <Step
               number="2"
-              title="Je parraine ou me fais parrainer"
-              text="Unissez vos forces avec un marcheur ou un donateur."
+              title="Je parraine / me fais parrainer"
+              text="Associez marcheurs et donateurs en 1 clic."
             />
             <Step
               number="3"
-              title="Je donne / je marche"
-              text="Le jour J, chaque kilomètre compte pour Gaza."
+              title="Je marche, chaque km compte"
+              text="Suivi en direct activé le jour J."
             />
           </div>
 
-          <div className="pt-8">
+          <div className="pt-10">
             <Link
               to="/participer"
-              className="inline-block bg-gradient-to-r from-green-600 via-black to-red-600 text-white font-semibold px-8 py-3 rounded-xl shadow-md hover:scale-105 transition-transform"
+              className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-600 via-black to-red-600 px-6 py-3 text-white font-semibold shadow-md hover:scale-[1.02] transition"
             >
-              Participer maintenant
+              Rejoindre la marche
+              <ArrowRight className="h-4 w-4 opacity-80" />
             </Link>
           </div>
         </div>
@@ -180,11 +218,12 @@ export default function Home() {
 
       <SectionDivider color="gray" />
 
-      {/* POURQUOI CETTE MARCHE */}
+      {/* ---------------- Pourquoi cette marche ---------------- */}
       <motion.section
         initial="hidden"
         whileInView="visible"
         variants={fadeUp}
+        viewport={{ once: true, amount: 0.3 }}
         className="py-16 bg-gray-50"
       >
         <div className="max-w-6xl mx-auto px-6 text-center">
@@ -196,7 +235,8 @@ export default function Home() {
           <motion.h2 className="text-3xl font-bold mb-10 text-gray-900">
             Pourquoi cette marche ?
           </motion.h2>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
             <Card
               icon={<Users className="w-10 h-10 mx-auto text-green-600" />}
               title="Solidarité"
@@ -218,25 +258,43 @@ export default function Home() {
 
       <SectionDivider color="gaza" />
 
-      {/* CARTE (désactivée avant jour J) */}
+      {/* ---------------- Carte (placeholder avant J) ---------------- */}
       <motion.section
         initial="hidden"
         whileInView="visible"
         variants={fadeUp}
+        viewport={{ once: true, amount: 0.3 }}
         className="py-20 bg-white"
       >
-        <div className="max-w-5xl mx-auto px-6 text-center space-y-6">
+        <div className="max-w-6xl mx-auto px-6 text-center space-y-6">
           <h2 className="text-3xl font-bold text-gray-900">Carte des marcheurs</h2>
           <p className="text-gray-600 max-w-2xl mx-auto">
-            La carte de suivi en direct sera disponible <strong>le jour de la marche</strong>.<br />
+            La carte de suivi en direct sera disponible <strong>le jour de la marche</strong>.
             Vous pourrez suivre le parcours, les participants et partager votre position en temps réel.
           </p>
 
-          <div className="mt-8 rounded-3xl bg-gradient-to-br from-green-100 via-white to-red-100 border border-gray-200 shadow-inner p-10 flex flex-col items-center justify-center space-y-4">
-            <CheckCircle className="w-10 h-10 text-green-600" />
-            <p className="text-lg font-semibold text-gray-800">
-              Bientôt disponible — Suivez-nous pour le grand départ 🕊️
-            </p>
+          <div className="mt-2 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-br from-green-50 via-white to-red-50 border border-gray-200/70 shadow-inner p-10 flex flex-col items-center justify-center space-y-4">
+              <CheckCircle className="w-10 h-10 text-green-600" />
+              <p className="text-lg font-semibold text-gray-800">
+                Bientôt disponible — Suivez-nous pour le grand départ 🕊️
+              </p>
+              <div className="text-xs text-gray-500">
+                Activation du suivi live au départ officiel
+              </div>
+            </div>
+          </div>
+
+          <div className="pt-4">
+            <Link
+              to="/participer"
+              className="group inline-flex items-center gap-2 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
+            >
+              <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 ring-1 ring-black/5 shadow-sm group-hover:shadow-md">
+                Je soutiens dès maintenant
+                <Sparkles className="h-4 w-4 text-amber-500" />
+              </span>
+            </Link>
           </div>
         </div>
       </motion.section>
@@ -244,49 +302,77 @@ export default function Home() {
   );
 }
 
-/* --- Sous-composants --- */
-function StatBox({
+/* ---------------- Sous-composants ---------------- */
+
+function KPI({
   value,
   label,
-  color,
+  tone,
 }: {
   value: number;
   label: string;
-  color: "green" | "yellow" | "black";
+  tone: "success" | "warning" | "ink";
 }) {
-  const colorClass =
-    color === "green"
-      ? "text-green-600"
-      : color === "yellow"
-      ? "text-yellow-600"
+  const toneColor =
+    tone === "success"
+      ? "text-emerald-600"
+      : tone === "warning"
+      ? "text-amber-600"
       : "text-gray-900";
+  const ringColor =
+    tone === "success"
+      ? "ring-emerald-100"
+      : tone === "warning"
+      ? "ring-amber-100"
+      : "ring-gray-100";
 
   return (
-    <div className="text-center bg-white shadow-md rounded-xl px-6 py-4 border border-gray-200 flex-1 min-w-[120px]">
-      <p className={`text-3xl font-bold ${colorClass}`}>{value}</p>
-      <p className="text-sm text-gray-600">{label}</p>
-    </div>
+    <motion.div
+      variants={fadeUp}
+      className={`text-center bg-white rounded-2xl px-5 py-4 shadow-sm ring-1 ${ringColor}`}
+    >
+      <p className={`text-3xl font-extrabold ${toneColor}`}>{value}</p>
+      <p className="text-xs text-gray-600 tracking-wide">{label}</p>
+    </motion.div>
   );
 }
 
-function Step({ number, title, text }: { number: string; title: string; text: string }) {
+function Step({
+  number,
+  title,
+  text,
+}: {
+  number: string;
+  title: string;
+  text: string;
+}) {
   return (
-    <div className="flex flex-col items-center text-center space-y-3">
-      <div className="w-10 h-10 flex items-center justify-center rounded-full bg-gradient-to-r from-green-600 via-black to-red-600 text-white font-bold text-lg shadow-md">
+    <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 py-6 text-center shadow-sm hover:shadow-md transition">
+      <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-green-600 via-black to-red-600 text-white font-bold text-sm shadow">
         {number}
       </div>
       <h3 className="font-semibold text-lg text-gray-900">{title}</h3>
-      <p className="text-gray-600 text-sm max-w-xs">{text}</p>
+      <p className="text-gray-600 text-sm mt-1">{text}</p>
+      <div className="pointer-events-none absolute -bottom-8 -right-8 h-24 w-24 rounded-full bg-gradient-to-br from-red-600/10 via-black/5 to-green-600/10" />
     </div>
   );
 }
 
-function Card({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
+function Card({
+  icon,
+  title,
+  text,
+}: {
+  icon: React.ReactNode;
+  title: string;
+  text: string;
+}) {
   return (
-    <div className="bg-white rounded-xl shadow-md p-6 hover:shadow-xl hover:scale-105 transition text-center">
-      <div className="mb-4">{icon}</div>
-      <h3 className="font-semibold text-xl mb-2 text-gray-900">{title}</h3>
+    <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm hover:shadow-md transition">
+      <div className="mb-3">{icon}</div>
+      <h3 className="font-semibold text-lg mb-1 text-gray-900">{title}</h3>
       <p className="text-gray-600 text-sm">{text}</p>
+      <div className="pointer-events-none absolute -top-10 -left-10 h-24 w-24 rounded-full bg-gradient-to-br from-green-600/10 via-black/5 to-red-600/10" />
     </div>
   );
 }
@@ -294,8 +380,8 @@ function Card({ icon, title, text }: { icon: React.ReactNode; title: string; tex
 function SectionDivider({ color }: { color: "gaza" | "gray" }) {
   if (color === "gaza") {
     return (
-      <div className="h-[2px] w-full bg-gradient-to-r from-red-600 via-black to-green-600 opacity-80"></div>
+      <div className="h-[2px] w-full bg-gradient-to-r from-red-600 via-black to-green-600 opacity-85" />
     );
   }
-  return <div className="h-[1px] w-full bg-gray-200"></div>;
+  return <div className="h-px w-full bg-gray-200" />;
 }

@@ -8,7 +8,7 @@ import {
   Users,
   UserCheck,
   Handshake,
-  AlertCircle,
+  Star,
   SquarePlus,
   SquareCheck,
   Clock,
@@ -424,9 +424,9 @@ export default function Participer() {
                   className={`relative p-4 sm:p-5 rounded-2xl backdrop-blur-md border transition-all w-full flex flex-col
                     min-h-[250px] hover:shadow-md
                     ${
-                      runner.id === MAIN_RUNNER_ID
-                        ? "bg-gradient-to-br from-yellow-50 via-white to-yellow-100 border-yellow-400 shadow-yellow-100"
-                        : "bg-white/70 border-gray-200"
+                        runner.id === MAIN_RUNNER_ID
+    ? "relative bg-gradient-to-br from-amber-100 via-yellow-50 to-amber-200 border border-amber-300 shadow-md shadow-amber-200 hover:shadow-amber-300/70 transition-all"
+    : "bg-white/80 border-gray-200 hover:shadow-md"
                     }`}
                 >
                   {/* Bouton discret en haut à droite */}
@@ -479,11 +479,18 @@ export default function Participer() {
                   )}
 
                   {/* Badge Marcheur principal */}
+                  
                   {runner.id === MAIN_RUNNER_ID && (
-                    <div className="absolute top-3 left-3 text-[11px] font-semibold text-yellow-700 bg-yellow-100 px-2 py-1 rounded-full shadow-sm border border-yellow-200">
-                      Marcheur principal
-                    </div>
+                   <motion.div
+                      animate={{ boxShadow: ["0 0 0px #fbbf24", "0 0 12px #facc15", "0 0 0px #fbbf24"] }}
+                      transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
+                      className="absolute -top-4 left-1/2 -translate-x-1/2 flex items-center gap-1.5 text-[13px] font-semibold px-3.5 py-1.5 rounded-full border border-amber-400 bg-gradient-to-r from-amber-100 via-yellow-50 to-amber-200 text-amber-800 shadow-md shadow-amber-200 backdrop-blur-sm"
+                    >
+                      <Star className="w-4 h-4 text-amber-500" />
+                      <span>Marcheur principal</span>
+                    </motion.div>
                   )}
+
 
                   {/* Contenu */}
                   <div className="pt-6">
