@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import {
+  Sparkles,
   CheckCircle,
   XCircle,
   Info,
@@ -366,20 +367,34 @@ export default function Participer() {
                   <button
                     onClick={toggleSelfSponsorship}
                     disabled={processingId === user.id || isReadOnly}
-                    className={`px-5 py-2.5 rounded-xl font-semibold shadow-md transition-all ${
-                      isReadOnly
-                        ? "bg-gray-300 text-gray-500 cursor-not-allowed"
-                        : active
-                        ? "bg-red-600 text-white hover:bg-red-700"
-                        : "bg-gradient-to-r from-green-600 via-black to-red-600 text-white hover:brightness-110"
-                    }`}
+                    className={`group relative inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl font-semibold transition-all shadow-sm
+                      ${
+                        isReadOnly
+                          ? "bg-gray-200 text-gray-500 cursor-not-allowed"
+                          : active
+                          ? "bg-gradient-to-r from-red-600 to-red-700 text-white hover:brightness-110"
+                          : "bg-gradient-to-r from-green-600 via-black to-red-600 text-white hover:brightness-110"
+                      }`}
                   >
-                    {processingId === user.id
-                      ? "..."
-                      : active
-                      ? "Annuler l’auto-parrainage"
-                      : "Activer l’auto-parrainage"}
+                    {processingId === user.id ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                        <span>Chargement...</span>
+                      </>
+                    ) : active ? (
+                      <>
+                        <XCircle className="w-4 h-4 text-white/90 group-hover:rotate-6 transition-transform" />
+                        <span>Annuler l’auto-parrainage</span>
+                      </>
+                    ) : (
+                      <>
+                        <Sparkles className="w-4 h-4 text-yellow-300 group-hover:scale-110 transition-transform" />
+                        <span>Activer l’auto-parrainage</span>
+                        <Handshake className="w-4 h-4 text-white/90 opacity-90 group-hover:translate-x-0.5 transition-transform" />
+                      </>
+                    )}
                   </button>
+
                   <p className="text-xs text-gray-500 mt-1">
                     {active
                       ? "(Tu es actuellement ton propre parrain)"
