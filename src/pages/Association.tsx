@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   HeartHandshake,
@@ -10,13 +11,16 @@ import {
   Snowflake,
   BookOpen,
   Users,
+  Hash,
+  Copy,
+  Check,
 } from "lucide-react";
 
 // ---- Images ----
 const HERO_IMG = "/media/IMG_5056.jpeg";     // kits
 const CHILDREN_IMG = "/media/IMG_5053.jpeg"; // bonnets & écharpes
 const FIELD_IMG = "/media/IMG_5055.jpeg";    // distribution terrain
-const YAFFA_LOGO = "/media/logoYAFFA.png";   // <<—— nouveau
+const YAFFA_LOGO = "/media/logoYAFFA.png";   // <<—— logo Yaffa
 
 // Fallback image
 const FALLBACK =
@@ -44,6 +48,17 @@ const fadeUp = (delay = 0) => ({
 });
 
 export default function Association() {
+  const [copied, setCopied] = useState(false);
+  const copyHashtag = async () => {
+    try {
+      await navigator.clipboard.writeText("#marchepourgaza");
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1400);
+    } catch {
+      /* ignore */
+    }
+  };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-[#fdfdfd] via-[#fafafa] to-[#f5f5f5] text-gray-900">
       {/* ======================= HERO ======================= */}
@@ -97,13 +112,13 @@ export default function Association() {
                     familles et enfants de Gaza.
                   </motion.p>
 
-                  <motion.div className="mt-6" {...fadeUp(0.2)}>
+                  <motion.div className="mt-6 flex flex-wrap items-center gap-3" {...fadeUp(0.2)}>
                     <a
                       href="#qui-est-yaffa"
-                      className="inline-flex items-center gap-2 rounded-xl bg-white/90 px-4 py-2 text-sm font-semibold text-gray-900 shadow-sm ring-1 ring-black/5 hover:bg-white"
+                      className="inline-flex items-center gap-2 rounded-xl/2 bg-white/15 px-3 py-2 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/20"
                     >
                       En savoir plus
-                      <ExternalLink className="h-4 w-4 opacity-70" />
+                      <ExternalLink className="h-3.5 w-3.5 opacity-70" />
                     </a>
                   </motion.div>
                 </div>
@@ -112,6 +127,53 @@ export default function Association() {
           </div>
         </div>
       </section>
+
+      {/* ========= BANDEAU DON (mise en avant + hashtag) ========= */}
+      <motion.section id="don" className="mx-auto -mt-8 max-w-5xl px-5 sm:px-8" {...fadeUp(0.05)}>
+        <div className="relative rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-lg">
+          <div className="rounded-2xl bg-white/95 ring-1 ring-black/5 px-5 py-5 sm:px-7 sm:py-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+            <div className="flex items-start gap-3">
+              <img
+                src={YAFFA_LOGO}
+                onError={(e) => (e.currentTarget.style.display = "none")}
+                alt=""
+                className="h-10 w-10 sm:h-12 sm:w-12 object-contain"
+              />
+              <div>
+                <p className="text-base sm:text-lg font-extrabold text-slate-900">
+                  Soutenir directement l’Association Yaffa
+                </p>
+                <p className="text-sm text-slate-700 leading-snug">
+                  Votre don finance des actions <strong>concrètes</strong> sur le terrain (kits alimentaires, soutien
+                  psychosocial, ateliers éducatifs…).
+                </p>
+                {/* Hashtag helper */}
+                <div className="mt-2 inline-flex flex-wrap items-center gap-2">
+                  <button
+                    onClick={copyHashtag}
+                    className="inline-flex items-center gap-1 rounded-full bg-white px-2.5 py-1 text-xs font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50"
+                    title="Copier le hashtag"
+                  >
+                    {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
+                    {copied ? "Copié !" : "#marchepourgaza"}
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <a
+              href="https://pay.raisenow.io/msgxh?lng=fr"
+              target="_blank"
+              rel="noreferrer"
+              className="whitespace-nowrap inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-700 via-black to-red-700 px-4 py-2.5 text-sm font-semibold text-white shadow hover:brightness-110"
+            >
+              <HeartHandshake className="h-4 w-4" />
+              Faire un don sécurisé
+              <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+            </a>
+          </div>
+        </div>
+      </motion.section>
 
       {/* ================ SECTION : Qui est Yaffa ? ================ */}
       <motion.section
@@ -138,7 +200,6 @@ export default function Association() {
 
             <div className="mt-4 space-y-4 text-gray-700">
               <p className="mt-1 max-w-3xl text-gray-700 leading-snug">
-
                 <strong>Yaffa</strong> est une association genevoise à but non
                 lucratif. Elle conçoit, coordonne et soutient des projets
                 d’intervention psychosociale, ainsi que des initiatives
@@ -168,16 +229,24 @@ export default function Association() {
               </FeaturePill>
             </div>
 
-            <div className="mt-6">
+            <div className="mt-6 flex flex-wrap gap-2">
               <a
                 href="https://association-yaffa.ch"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl bg-slate-900 px-5 py-2.5 text-sm font-semibold text-white shadow hover:bg-slate-800"
+              >
+                <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                Visiter le site de Yaffa
+              </a>
+              <a
+                href="https://pay.raisenow.io/msgxh?lng=fr"
                 target="_blank"
                 rel="noreferrer"
                 className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-700 via-black to-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow hover:brightness-110"
               >
                 <HeartHandshake className="h-4 w-4" />
-                Visiter le site de Yaffa
-                <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                Faire un don
               </a>
             </div>
           </div>
@@ -345,6 +414,11 @@ export default function Association() {
             <p className="mt-1 max-w-3xl text-gray-700 leading-snug">
               Découvrez leurs projets, faites un don ou contactez l’équipe
               directement sur leur site officiel.
+            </p>
+            {/* Rappel hashtag discret */}
+            <p className="mt-2 text-xs text-slate-600">
+              Astuce : dans le message du don, ajoutez <strong>#marchepourgaza</strong> pour que l’association
+              identifie votre participation à la marche.
             </p>
           </div>
 
