@@ -14,13 +14,14 @@ import {
   Hash,
   Copy,
   Check,
+  MapPin,
 } from "lucide-react";
 
 // ---- Images ----
-const HERO_IMG = "/media/IMG_5056.jpeg";     // kits
-const CHILDREN_IMG = "/media/IMG_5053.jpeg"; // bonnets & écharpes
-const FIELD_IMG = "/media/IMG_5055.jpeg";    // distribution terrain
-const YAFFA_LOGO = "/media/logoYAFFA.png";   // <<—— logo Yaffa
+const HERO_IMG = "/media/IMG_5056.jpeg";
+const CHILDREN_IMG = "/media/IMG_5053.jpeg";
+const FIELD_IMG = "/media/IMG_5055.jpeg";
+const YAFFA_LOGO = "/media/logoYAFFA.png";
 
 // Fallback image
 const FALLBACK =
@@ -52,11 +53,9 @@ export default function Association() {
   const copyHashtag = async () => {
     try {
       await navigator.clipboard.writeText("#marchepourgaza");
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {
-      /* ignore */
-    }
+    setCopied(true);
+    setTimeout(() => setCopied(false), 1400);
+    } catch {}
   };
 
   return (
@@ -72,10 +71,9 @@ export default function Association() {
               className="h-[46vh] w-full object-cover sm:h-[54vh] md:h-[58vh]"
               loading="eager"
             />
-            {/* voile */}
             <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/25 to-transparent" />
 
-            {/* Logo YAFFA mis en avant */}
+            {/* Logo YAFFA */}
             <div className="absolute right-4 top-4 sm:right-6 sm:top-6">
               <div className="rounded-2xl bg-white/90 p-2 ring-1 ring-black/10 shadow-lg backdrop-blur">
                 <img
@@ -87,7 +85,7 @@ export default function Association() {
               </div>
             </div>
 
-            {/* contenu texte */}
+            {/* contenu */}
             <div className="absolute inset-0 flex items-center">
               <div className="w-full px-5 sm:px-8">
                 <div className="mx-auto max-w-5xl text-white">
@@ -107,15 +105,14 @@ export default function Association() {
                     className="mt-3 max-w-3xl text-sm/6 sm:text-base/7 text-white/90"
                     {...fadeUp(0.12)}
                   >
-                    Une passerelle entre la Suisse et la Palestine. Yaffa œuvre
-                    pour le soutien psychosocial, éducatif et artistique des
-                    familles et enfants de Gaza.
+                    Une passerelle entre la Suisse et la Palestine. Yaffa œuvre pour le soutien psychosocial, éducatif
+                    et artistique des familles et enfants de Gaza.
                   </motion.p>
 
                   <motion.div className="mt-6 flex flex-wrap items-center gap-3" {...fadeUp(0.2)}>
                     <a
                       href="#qui-est-yaffa"
-                      className="inline-flex items-center gap-2 rounded-xl/2 bg-white/15 px-3 py-2 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/20"
+                      className="inline-flex items-center gap-2 rounded-xl bg-white/15 px-3 py-2 text-xs font-semibold text-white ring-1 ring-white/20 hover:bg-white/20"
                     >
                       En savoir plus
                       <ExternalLink className="h-3.5 w-3.5 opacity-70" />
@@ -128,7 +125,7 @@ export default function Association() {
         </div>
       </section>
 
-      {/* ========= BANDEAU DON (mise en avant + hashtag) ========= */}
+      {/* ========= BANDEAU DON modernisé (cohérent avec Home) ========= */}
       <motion.section id="don" className="mx-auto -mt-8 max-w-5xl px-5 sm:px-8" {...fadeUp(0.05)}>
         <div className="relative rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-lg">
           <div className="rounded-2xl bg-white/95 ring-1 ring-black/5 px-5 py-5 sm:px-7 sm:py-6 flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
@@ -144,10 +141,17 @@ export default function Association() {
                   Soutenir directement l’Association Yaffa
                 </p>
                 <p className="text-sm text-slate-700 leading-snug">
-                  Votre don finance des actions <strong>concrètes</strong> sur le terrain (kits alimentaires, soutien
-                  psychosocial, ateliers éducatifs…).
+                  Vos dons financent des actions concrètes à Gaza : kits alimentaires, soutien psychosocial,
+                  ateliers éducatifs.
                 </p>
-                {/* Hashtag helper */}
+                {/* mini-puces */}
+                <div className="mt-2 grid grid-cols-2 gap-2">
+                  <Pill icon={<ShieldCheck className="h-3.5 w-3.5" />} text="Transparence" />
+                  <Pill icon={<MapPin className="h-3.5 w-3.5" />} text="Terrain" />
+                  <Pill icon={<Sparkles className="h-3.5 w-3.5" />} text="Éducation & ateliers" />
+                  <Pill icon={<Users className="h-3.5 w-3.5" />} text="Soutien familles" />
+                </div>
+                {/* Hashtag */}
                 <div className="mt-2 inline-flex flex-wrap items-center gap-2">
                   <button
                     onClick={copyHashtag}
@@ -155,7 +159,7 @@ export default function Association() {
                     title="Copier le hashtag"
                   >
                     {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" /> : <Copy className="h-3.5 w-3.5" />}
-                    {copied ? "Copié !" : "#marchepourgaza"}
+                    {copied ? "Copié" : "#marchepourgaza"}
                   </button>
                 </div>
               </div>
@@ -183,7 +187,6 @@ export default function Association() {
       >
         <div className="grid items-stretch gap-6 md:grid-cols-2">
           <div className="relative rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-8">
-            {/* petit logo subtil en haut à droite */}
             <img
               src={YAFFA_LOGO}
               onError={(e) => (e.currentTarget.style.display = "none")}
@@ -200,33 +203,21 @@ export default function Association() {
 
             <div className="mt-4 space-y-4 text-gray-700">
               <p className="mt-1 max-w-3xl text-gray-700 leading-snug">
-                <strong>Yaffa</strong> est une association genevoise à but non
-                lucratif. Elle conçoit, coordonne et soutient des projets
-                d’intervention psychosociale, ainsi que des initiatives
-                éducatives et artistiques, en collaboration avec des partenaires
-                locaux à Gaza.
+                Yaffa est une association genevoise à but non lucratif. Elle conçoit, coordonne et soutient des projets
+                d’intervention psychosociale, ainsi que des initiatives éducatives et artistiques, en collaboration avec
+                des partenaires locaux à Gaza.
               </p>
               <p className="mt-1 max-w-3xl text-gray-700 leading-snug">
-                Sur le terrain, les équipes accompagnent les enfants, les mamans
-                et les familles au plus près des besoins concrets, avec une
-                attention portée au lien social, à la confiance et aux
-                perspectives.
+                Sur le terrain, les équipes accompagnent les enfants, les mamans et les familles, avec une attention
+                portée au lien social, à la confiance et aux perspectives.
               </p>
             </div>
 
             <div className="mt-5 flex flex-wrap gap-2">
-              <FeaturePill icon={<ShieldCheck className="h-4 w-4" />}>
-                Transparence & terrain
-              </FeaturePill>
-              <FeaturePill icon={<HandHeart className="h-4 w-4" />}>
-                Impact direct familles
-              </FeaturePill>
-              <FeaturePill icon={<Sparkles className="h-4 w-4" />}>
-                Activités éducatives & artistiques
-              </FeaturePill>
-              <FeaturePill icon={<Images className="h-4 w-4" />}>
-                Actions documentées
-              </FeaturePill>
+              <FeaturePill icon={<ShieldCheck className="h-4 w-4" />}>Transparence & terrain</FeaturePill>
+              <FeaturePill icon={<HandHeart className="h-4 w-4" />}>Impact direct familles</FeaturePill>
+              <FeaturePill icon={<Sparkles className="h-4 w-4" />}>Activités éducatives & artistiques</FeaturePill>
+              <FeaturePill icon={<Images className="h-4 w-4" />}>Actions documentées</FeaturePill>
             </div>
 
             <div className="mt-6 flex flex-wrap gap-2">
@@ -251,7 +242,7 @@ export default function Association() {
             </div>
           </div>
 
-          {/* Image à droite + watermark logo discret */}
+          {/* Image à droite */}
           <div className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm">
             <img
               src={CHILDREN_IMG}
@@ -261,7 +252,6 @@ export default function Association() {
               loading="lazy"
             />
             <div className="pointer-events-none absolute inset-x-0 bottom-0 bg-gradient-to-t from-black/60 to-transparent p-4 sm:p-5">
-              {/* watermark discret */}
               <img
                 src={YAFFA_LOGO}
                 onError={(e) => (e.currentTarget.style.display = "none")}
@@ -274,10 +264,7 @@ export default function Association() {
       </motion.section>
 
       {/* ================ Programme Sourire ================ */}
-      <motion.section
-        className="mx-auto mt-10 max-w-7xl px-5 sm:px-8"
-        {...fadeUp(0.05)}
-      >
+      <motion.section className="mx-auto mt-10 max-w-7xl px-5 sm:px-8" {...fadeUp(0.05)}>
         <div className="items-center justify-between rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:flex md:p-8">
           <div className="flex items-start gap-3">
             <div className="mt-1 flex h-10 w-10 items-center justify-center rounded-xl bg-green-600/10 ring-1 ring-green-600/20">
@@ -286,10 +273,8 @@ export default function Association() {
             <div>
               <h3 className="text-xl font-bold">Programme “Sourire”</h3>
               <p className="mt-1 max-w-3xl text-gray-700 leading-snug">
-                Démarche psychosociale communautaire menée avec des partenaires
-                locaux à Gaza. Activités éducatives et artistiques, écoute, et
-                reconstruction du lien social — un même fil conducteur&nbsp;:
-                redonner confiance et perspectives.
+                Démarche psychosociale communautaire menée avec des partenaires locaux à Gaza. Activités éducatives et
+                artistiques, écoute, et reconstruction du lien social.
               </p>
             </div>
           </div>
@@ -307,12 +292,8 @@ export default function Association() {
       </motion.section>
 
       {/* ============ Liste d'actions + image à droite ============ */}
-      <motion.section
-        className="mx-auto mt-12 max-w-7xl px-5 sm:px-8"
-        {...fadeUp(0.05)}
-      >
+      <motion.section className="mx-auto mt-12 max-w-7xl px-5 sm:px-8" {...fadeUp(0.05)}>
         <div className="mb-4 flex items-center gap-2">
-          {/* petit logo subtil près du titre */}
           <img
             src={YAFFA_LOGO}
             onError={(e) => (e.currentTarget.style.display = "none")}
@@ -323,43 +304,41 @@ export default function Association() {
         </div>
 
         <div className="grid gap-5 md:grid-cols-12 items-stretch">
-          {/* Liste d'actions */}
           <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:col-span-7 md:p-8">
             <ul className="space-y-5">
               <ActionItem
                 icon={<HeartHandshake className="h-5 w-5 text-green-700" />}
                 title="Distribution de kits alimentaires"
-                desc="Aides d’urgence (huile, conserves, légumineuses, eau) remises aux familles les plus exposées."
+                desc="Aides d’urgence remises aux familles les plus exposées."
               />
               <ActionItem
                 icon={<Snowflake className="h-5 w-5 text-sky-700" />}
                 title="Hiver au chaud"
-                desc="Bonnets, écharpes et vêtements chauds pour les enfants afin d’affronter la saison froide."
+                desc="Bonnets, écharpes et vêtements chauds pour les enfants."
               />
               <ActionItem
                 icon={<Sparkles className="h-5 w-5 text-yellow-700" />}
                 title="Ateliers éducatifs et artistiques"
-                desc="Espaces d’expression, activités créatives et ludiques pour renforcer résilience et confiance."
+                desc="Espaces d’expression et activités créatives."
               />
               <ActionItem
                 icon={<Users className="h-5 w-5 text-rose-700" />}
                 title="Accompagnement psychosocial"
-                desc="Écoute, cercles de parole et soutien de proximité pour enfants et mamans."
+                desc="Écoute, cercles de parole et soutien de proximité."
               />
               <ActionItem
                 icon={<BookOpen className="h-5 w-5 text-indigo-700" />}
                 title="Soutien scolaire"
-                desc="Rattrapage, aide aux devoirs et animations pédagogiques menés avec les partenaires locaux."
+                desc="Rattrapage et aide aux devoirs."
               />
               <ActionItem
                 icon={<ShieldCheck className="h-5 w-5 text-emerald-700" />}
                 title="Aide ciblée aux familles vulnérables"
-                desc="Interventions adaptées aux besoins identifiés sur le terrain, en coordination avec les équipes locales."
+                desc="Interventions adaptées aux besoins identifiés."
               />
             </ul>
           </div>
 
-          {/* Image à droite (pleine hauteur) + watermark discret */}
           <div className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow-sm md:col-span-5 flex">
             <img
               src={FIELD_IMG}
@@ -382,18 +361,12 @@ export default function Association() {
           </div>
         </div>
 
-        <p className="mt-4 text-xs text-gray-500">
-          Photos fournies par l’Association Yaffa, utilisées avec autorisation.
-        </p>
+        <p className="mt-4 text-xs text-gray-500">Photos fournies par l’Association Yaffa, utilisées avec autorisation.</p>
       </motion.section>
 
       {/* ======================= CTA ======================= */}
-      <motion.section
-        className="mx-auto my-14 max-w-7xl px-5 sm:px-8"
-        {...fadeUp(0.05)}
-      >
+      <motion.section className="mx-auto my-14 max-w-7xl px-5 sm:px-8" {...fadeUp(0.05)}>
         <div className="relative items-center justify-between rounded-3xl border border-gray-200 bg-gradient-to-br from-green-50 via-white to-red-50 p-6 shadow-sm md:flex md:p-8">
-          {/* petit logo subtil en filigrane */}
           <img
             src={YAFFA_LOGO}
             onError={(e) => (e.currentTarget.style.display = "none")}
@@ -412,13 +385,10 @@ export default function Association() {
               Envie de soutenir Yaffa&nbsp;?
             </h4>
             <p className="mt-1 max-w-3xl text-gray-700 leading-snug">
-              Découvrez leurs projets, faites un don ou contactez l’équipe
-              directement sur leur site officiel.
+              Découvrez leurs projets, faites un don ou contactez l’équipe directement sur leur site officiel.
             </p>
-            {/* Rappel hashtag discret */}
             <p className="mt-2 text-xs text-slate-600">
-              Astuce : dans le message du don, ajoutez <strong>#marchepourgaza</strong> pour que l’association
-              identifie votre participation à la marche.
+              Astuce : dans le message du don, ajoutez <strong>#marchepourgaza</strong> pour identifier votre participation.
             </p>
           </div>
 
@@ -440,13 +410,7 @@ export default function Association() {
 
 /* ======================= Petits composants ======================= */
 
-function FeaturePill({
-  children,
-  icon,
-}: {
-  children: React.ReactNode;
-  icon: React.ReactNode;
-}) {
+function FeaturePill({ children, icon }: { children: React.ReactNode; icon: React.ReactNode }) {
   return (
     <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
       {icon}
@@ -455,15 +419,16 @@ function FeaturePill({
   );
 }
 
-function ActionItem({
-  icon,
-  title,
-  desc,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  desc: string;
-}) {
+function Pill({ icon, text }: { icon: React.ReactNode; text: string }) {
+  return (
+    <span className="inline-flex items-center gap-1.5 rounded-lg bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+      {icon}
+      {text}
+    </span>
+  );
+}
+
+function ActionItem({ icon, title, desc }: { icon: React.ReactNode; title: string; desc: string }) {
   return (
     <li className="flex items-start gap-3">
       <div className="mt-0.5 flex h-9 w-9 items-center justify-center rounded-lg bg-slate-50 ring-1 ring-slate-200">

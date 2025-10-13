@@ -9,9 +9,6 @@ import {
   Handshake,
   HeartHandshake,
   ExternalLink,
-  Hash,
-  Copy,
-  Check,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -40,22 +37,14 @@ export default function Home() {
   const [sponsorshipCount, setSponsorshipCount] = useState(0);
   const [waitingCount, setWaitingCount] = useState(0);
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
-  const [copied, setCopied] = useState(false);
-
-  const copyHashtag = async () => {
-    try {
-      await navigator.clipboard.writeText("#marchepourgaza");
-      setCopied(true);
-      setTimeout(() => setCopied(false), 1400);
-    } catch {}
-  };
 
   useEffect(() => {
     const fetchData = async () => {
       // Profils (public)
       const { data: profilesData } = await supabase
         .from("profiles")
-        .select("id, role, full_name, city");
+        .select("id, role, full_name, city")
+        .not("full_name", "is", null);
       setProfiles(profilesData || []);
 
       // Parrainages acceptés (public)
@@ -69,7 +58,8 @@ export default function Home() {
       const { data: allRunners } = await supabase
         .from("profiles")
         .select("id, full_name")
-        .eq("role", "runner");
+        .eq("role", "runner")
+        .not("full_name", "is", null);
 
       const { data: sponsoredRunners } = await supabase
         .from("sponsorships")
@@ -77,31 +67,27 @@ export default function Home() {
         .eq("status", "accepted");
 
       const sponsoredSet = new Set((sponsoredRunners || []).map((r) => r.runner_id));
-      const hasFullName = (name?: string | null) =>
-        typeof name === "string" && name.trim().split(/\s+/).filter(Boolean).length >= 2;
-
-      const waiting = (allRunners || []).filter(
-        (r) => hasFullName(r.full_name) && !sponsoredSet.has(r.id)
-      );
+      const waiting = (allRunners || []).filter((r) => !sponsoredSet.has(r.id));
       setWaitingCount(waiting.length);
 
-      // Total potentiel public : Σ (pledge_per_km × max_amount)
+      // Total potentiel public : Σ (pledge_per_km × expected_km)
       const { data: rows } = await supabase
         .from("sponsorships")
-        .select("pledge_per_km, max_amount")
+        .select("pledge_per_km, runner:runner_id ( expected_km )")
         .eq("status", "accepted");
 
       if (rows) {
         const total = rows.reduce((sum: number, s: any) => {
           const pledge = Number(s?.pledge_per_km) || 0;
-          const maxAmount = Number(s?.max_amount) || 0;
-          const line = pledge * maxAmount;
+          const km = Number(s?.runner?.expected_km) || 0;
+          const line = pledge * km;
           return sum + (Number.isFinite(line) ? line : 0);
         }, 0);
         setTotalFunds(Math.round(total * 100) / 100);
       } else {
         setTotalFunds(0);
       }
+
     };
 
     fetchData();
@@ -117,14 +103,14 @@ export default function Home() {
         className="min-h-[calc(100vh-80px)] flex flex-col md:flex-row items-center justify-between px-6 md:px-16 lg:px-24 bg-gradient-to-br from-gray-100 via-white to-gray-50 py-16"
       >
         {/* Texte d’intro */}
-        <motion.div variants={fadeUp} className="flex-1 text-left space-y-6 md:pr-12">
+        <motion.div variants={fadeUp} className="flex-1 md:pr-12 text-center md:text-left space-y-5">
           <h1 className="text-4xl md:text-6xl font-extrabold leading-tight text-gray-900">
             Marche solidaire <br /> autour du Léman <br />
             <span className="bg-gradient-to-r from-red-600 via-black to-green-600 bg-clip-text text-transparent">
               pour Gaza
             </span>
           </h1>
-          <p className="text-lg text-gray-700 max-w-lg">
+          <p className="text-lg text-gray-700 max-w-lg mx-auto md:mx-0 leading-snug">
             Rejoignez une marche de <strong>180 km</strong> autour du lac Léman
             et soutenez Gaza grâce à vos pas et vos parrains.
           </p>
@@ -134,16 +120,16 @@ export default function Home() {
             variants={stagger}
             initial="hidden"
             animate="visible"
-            className="grid grid-cols-3 gap-4 max-w-xl"
+            className="grid grid-cols-3 gap-3 max-w-xl mx-auto md:mx-0"
           >
             <KPI value={profiles.length} label="Participants" tone="ink" />
-            <KPI value={sponsorshipCount} label="Parrainages" tone="success" />
-            <KPI value={waitingCount} label="En attente" tone="warning" />
+            <KPI value={sponsorshipCount} label="Parrainages validés" tone="success" />
+            <KPI value={waitingCount} label="Sans parrains" tone="warning" />
           </motion.div>
 
           {/* Total (public) */}
           {totalFunds !== null && (
-            <p className="text-sm text-gray-700/90 max-w-lg">
+            <p className="text-sm text-gray-700/90 max-w-lg mx-auto md:mx-0 leading-snug">
               Les parrainages validés représentent{" "}
               <strong className="text-green-700">{formatCHF(totalFunds)}</strong>{" "}
               de soutien <b>potentiel</b> pour l’association.
@@ -151,7 +137,7 @@ export default function Home() {
           )}
 
           {/* CTA principal */}
-          <div className="pt-2">
+          <div className="pt-1.5 flex justify-center md:justify-start">
             <Link
               to="/participer"
               className="group inline-flex items-center gap-2 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
@@ -168,7 +154,7 @@ export default function Home() {
         {/* Vidéo téléphone */}
         <motion.div
           variants={fadeUp}
-          className="flex-1 flex justify-center mt-12 md:mt-0"
+          className="flex-1 flex justify-center mt-10 md:mt-0"
           animate={{ y: [0, -5, 0, 5, 0] }}
           transition={{ duration: 6, repeat: Infinity, ease: "easeInOut" }}
         >
@@ -195,28 +181,21 @@ export default function Home() {
         whileInView="visible"
         variants={fadeUp}
         viewport={{ once: true, amount: 0.3 }}
-        className="py-18 md:py-20 bg-white"
+        className="py-16 md:py-18 bg-white"
       >
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <motion.h2 className="text-3xl font-extrabold text-gray-900 mb-2">
-            Comment ça marche ?
-          </motion.h2>
-          <p className="text-gray-600 mb-10">
-            Inscrivez-vous, trouvez des parrains, et marchez pour une cause juste. Simple et
-            transparent.
+          <motion.h2 className="text-3xl font-extrabold text-gray-900 mb-1">Comment ça marche ?</motion.h2>
+          <p className="text-gray-600 mb-8 leading-snug">
+            Inscrivez-vous, trouvez des parrains, et marchez pour une cause juste. Simple et transparent.
           </p>
 
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 md:gap-8">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-5 md:gap-6">
             <Step number="1" title="Je m’inscris" text="Créez votre profil pour rejoindre la marche." />
-            <Step
-              number="2"
-              title="Je parraine / me fais parrainer"
-              text="Associez marcheurs et donateurs en 1 clic."
-            />
+            <Step number="2" title="Je parraine / me fais parrainer" text="Associez marcheurs et donateurs en 1 clic." />
             <Step number="3" title="Je marche, chaque km compte" text="Suivi en direct activé le jour J." />
           </div>
 
-          <div className="pt-10">
+          <div className="pt-8">
             <Link
               to="/participer"
               className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-600 via-black to-red-600 px-6 py-3 text-white font-semibold shadow-md hover:scale-[1.02] transition"
@@ -236,134 +215,99 @@ export default function Home() {
         whileInView="visible"
         variants={fadeUp}
         viewport={{ once: true, amount: 0.3 }}
-        className="py-16 bg-gray-50"
+        className="py-14 bg-gray-50"
       >
         <div className="max-w-6xl mx-auto px-6 text-center">
-          <img src="/media/watermelon.png" alt="Logo Gaza" className="mx-auto mb-6 h-14 w-auto" />
-          <motion.h2 className="text-3xl font-bold mb-10 text-gray-900">Pourquoi cette marche ?</motion.h2>
+          <img src="/media/watermelon.png" alt="Logo Gaza" className="mx-auto mb-5 h-12 w-auto" />
+          <motion.h2 className="text-3xl font-bold mb-8 text-gray-900">Pourquoi cette marche ?</motion.h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 md:gap-8">
-            <Card
-              icon={<Users className="w-10 h-10 mx-auto text-green-600" />}
-              title="Solidarité"
-              text="Unir nos pas pour soutenir Gaza et montrer notre engagement."
-            />
-            <Card
-              icon={<Heart className="w-10 h-10 mx-auto text-red-600" />}
-              title="Santé & Engagement"
-              text="Prendre soin de soi tout en marchant pour une cause juste."
-            />
-            <Card
-              icon={<Globe className="w-10 h-10 mx-auto text-black" />}
-              title="Visibilité"
-              text="Donner une voix à Gaza à travers chaque kilomètre parcouru."
-            />
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
+            <Card icon={<Users className="w-10 h-10 mx-auto text-green-600" />} title="Solidarité" text="Unir nos pas pour soutenir Gaza et montrer notre engagement." />
+            <Card icon={<Heart className="w-10 h-10 mx-auto text-red-600" />} title="Santé & Engagement" text="Prendre soin de soi tout en marchant pour une cause juste." />
+            <Card icon={<Globe className="w-10 h-10 mx-auto text-black" />} title="Visibilité" text="Donner une voix à Gaza à travers chaque kilomètre parcouru." />
           </div>
         </div>
       </motion.section>
 
       <SectionDivider color="gaza" />
 
-      {/* ---------------- Don Yaffa (version premium) ---------------- */}
+      {/* ---------------- Section combinée : Comment donner ? + Yaffa (compacte) ---------------- */}
       <motion.section
         initial="hidden"
         whileInView="visible"
         variants={fadeUp}
-        className="py-16 bg-white"
+        viewport={{ once: true, amount: 0.25 }}
+        className="py-14 bg-white"
       >
-        <div className="mx-auto max-w-7xl px-6">
-          {/* cadre dégradé + glass */}
-          <motion.div
-            whileHover={{ scale: 1.002 }}
-            transition={{ type: "spring", stiffness: 120, damping: 16 }}
-            className="relative rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600/60 via-gray-900/60 to-rose-600/60 shadow-sm"
-          >
-            <div className="relative rounded-3xl bg-white/80 backdrop-blur-md ring-1 ring-black/10 p-6 md:p-8 flex flex-col md:flex-row items-start md:items-center justify-between gap-6">
-              {/* brillance décorative */}
-              <div className="pointer-events-none absolute -top-10 -left-10 h-32 w-32 rounded-full bg-white/30 blur-2xl" />
-              <div className="pointer-events-none absolute -bottom-10 -right-10 h-32 w-32 rounded-full bg-white/20 blur-2xl" />
+        <div className="max-w-6xl mx-auto px-6">
+          <div className="text-center">
+            <motion.h2 className="text-3xl font-extrabold text-gray-900 mb-1">Comment donner ?</motion.h2>
+            <p className="text-gray-700 max-w-2xl mx-auto leading-snug">
+              Une fois la course terminée, calculez vos kilomètres réalisés et <strong>donnez directement via TWINT</strong>.
+            </p>
+          </div>
 
-              {/* gauche : logo + titre + texte + mini-pills + actions secondaires */}
-              <div className="flex-1 min-w-0">
-                <div className="flex items-start gap-4">
-                  <div className="shrink-0 rounded-2xl bg-white ring-1 ring-black/10 p-2 shadow">
-                    <img src="/media/logoYAFFA.png" alt="Association Yaffa" className="h-12 w-12" />
-                  </div>
+          <div className="mt-6 grid gap-5 md:grid-cols-2">
+            {/* Colonne TWINT */}
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-7">
+              <h3 className="text-lg font-bold text-slate-900">Donner via TWINT</h3>
+              <p className="mt-1 text-slate-700 leading-snug">
+                Entrez le montant correspondant à vos km (ou à l’engagement de vos parrains) et validez.
+              </p>
 
-                  <div className="min-w-0">
-                    <h3 className="text-xl md:text-2xl font-extrabold text-slate-900">
-                      Soutenir directement l’Association Yaffa
-                    </h3>
-                    <p className="mt-1 text-gray-700">
-                      Votre don finance des actions <b>concrètes</b> sur le terrain
-                      (kits alimentaires, soutien psychosocial, ateliers éducatifs…).
-                    </p>
+              <div className="mt-4">
+                <a
+                  href="https://pay.raisenow.io/msgxh?lng=fr"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-700 via-black to-red-700 px-5 py-3 text-sm font-semibold text-white shadow hover:brightness-110"
+                >
+                  <HeartHandshake className="h-4 w-4" />
+                  Donner via TWINT
+                  <ExternalLink className="h-3.5 w-3.5 opacity-80" />
+                </a>
+              </div>
 
-                    {/* micro-badges */}
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                        Transparence
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                        Actions à Gaza
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                        Éducation & soutien
-                      </span>
-                    </div>
+              <p className="mt-2 text-xs text-gray-500 leading-snug">
+                Astuce : indiquez “Marche pour Gaza” dans le message du don.
+              </p>
+            </div>
 
-                    {/* actions secondaires */}
-                    <div className="mt-3 flex flex-wrap items-center gap-2">
-                      <button
-                        onClick={copyHashtag}
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50"
-                      >
-                        {copied ? (
-                          <>
-                            <Check className="h-4 w-4 text-emerald-600" />
-                            Hashtag copié !
-                          </>
-                        ) : (
-                          <>
-                            <Hash className="h-4 w-4 text-slate-600" />
-                            #marchepourgaza
-                            <Copy className="h-4 w-4 text-slate-500" />
-                          </>
-                        )}
-                      </button>
-
-                      <a
-                        href="https://association-yaffa.ch"
-                        target="_blank"
-                        rel="noreferrer"
-                        className="inline-flex items-center gap-1.5 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50"
-                      >
-                        Site Yaffa
-                        <ExternalLink className="h-4 w-4 opacity-70" />
-                      </a>
-                    </div>
-                  </div>
+            {/* Colonne Yaffa (résumé, sans bouton de don supplémentaire) */}
+            <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-7">
+              <div className="flex items-start gap-3">
+                <img src="/media/logoYAFFA.png" alt="Association Yaffa" className="h-9 w-9 object-contain" />
+                <div>
+                  <h3 className="text-lg font-bold text-slate-900">Association Yaffa</h3>
+                  <p className="mt-1 text-slate-700 leading-snug">
+                    Les dons financent des actions <strong>concrètes</strong> à Gaza : kits alimentaires, soutien
+                    psychosocial, ateliers éducatifs.
+                  </p>
                 </div>
               </div>
 
-              {/* droite : CTA principal raffiné */}
-              <a
-                href="https://pay.raisenow.io/msgxh?lng=fr"
-                target="_blank"
-                rel="noreferrer"
-                className="group shrink-0 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-110 transition focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-emerald-600"
-              >
-                <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm font-semibold text-slate-900 ring-1 ring-black/5 shadow-sm group-hover:shadow-md">
-                  <HeartHandshake className="h-4 w-4 text-emerald-600" />
-                  Faire un don sécurisé
-                  <ExternalLink className="h-3.5 w-3.5 opacity-80" />
-                </span>
-              </a>
+              <ul className="mt-3 grid grid-cols-2 gap-2 text-xs text-slate-700">
+                <li className="rounded-lg bg-slate-50 px-3 py-1 ring-1 ring-slate-200">Transparence</li>
+                <li className="rounded-lg bg-slate-50 px-3 py-1 ring-1 ring-slate-200">Sur le terrain</li>
+                <li className="rounded-lg bg-slate-50 px-3 py-1 ring-1 ring-slate-200">Éducation & ateliers</li>
+                <li className="rounded-lg bg-slate-50 px-3 py-1 ring-1 ring-slate-200">Soutien familles</li>
+              </ul>
+
+              <div className="mt-3">
+                <a
+                  href="https://association-yaffa.ch"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl bg-white px-4 py-2.5 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50"
+                >
+                  En savoir plus sur Yaffa
+                  <ExternalLink className="h-4 w-4 opacity-70" />
+                </a>
+              </div>
             </div>
-          </motion.div>
+          </div>
         </div>
       </motion.section>
-
 
       <SectionDivider color="gaza" />
 
@@ -373,26 +317,23 @@ export default function Home() {
         whileInView="visible"
         variants={fadeUp}
         viewport={{ once: true, amount: 0.3 }}
-        className="py-20 bg-white"
+        className="py-16 bg-white"
       >
-        <div className="max-w-6xl mx-auto px-6 text-center space-y-6">
+        <div className="max-w-6xl mx-auto px-6 text-center space-y-5">
           <h2 className="text-3xl font-bold text-gray-900">Carte des marcheurs</h2>
-          <p className="text-gray-600 max-w-2xl mx-auto">
-            La carte de suivi en direct sera disponible <strong>le jour de la marche</strong>. Vous
-            pourrez suivre le parcours, les participants et partager votre position en temps réel.
+          <p className="text-gray-600 max-w-2xl mx-auto leading-snug">
+            La carte de suivi en direct sera disponible <strong>le jour de la marche</strong>. Suivez le parcours et les participants.
           </p>
 
-          <div className="mt-2 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
-            <div className="rounded-3xl bg-gradient-to-br from-green-50 via-white to-red-50 border border-gray-200/70 shadow-inner p-10 flex flex-col items-center justify-center space-y-4">
+          <div className="mt-1.5 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
+            <div className="rounded-3xl bg-gradient-to-br from-green-50 via-white to-red-50 border border-gray-200/70 shadow-inner p-9 flex flex-col items-center justify-center space-y-3.5">
               <CheckCircle className="w-10 h-10 text-green-600" />
-              <p className="text-lg font-semibold text-gray-800">
-                Bientôt disponible — Suivez-nous pour le grand départ 🕊️
-              </p>
-              <div className="text-xs text-gray-500">Activation du suivi live au départ officiel</div>
+              <p className="text-base font-semibold text-gray-800">Bientôt disponible — Suivez-nous pour le départ</p>
+              <div className="text-xs text-gray-500">Activation du live au départ officiel</div>
             </div>
           </div>
 
-          <div className="pt-4">
+          <div className="pt-2.5">
             <Link
               to="/participer"
               className="group inline-flex items-center gap-2 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
@@ -436,11 +377,11 @@ function KPI({
 function Step({ number, title, text }: { number: string; title: string; text: string }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white px-5 py-6 text-center shadow-sm hover:shadow-md transition">
-      <div className="mx-auto mb-3 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-green-600 via-black to-red-600 text-white font-bold text-sm shadow">
+      <div className="mx-auto mb-2.5 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-green-600 via-black to-red-600 text-white font-bold text-sm shadow">
         {number}
       </div>
       <h3 className="font-semibold text-lg text-gray-900">{title}</h3>
-      <p className="text-gray-600 text-sm mt-1">{text}</p>
+      <p className="text-gray-600 text-sm mt-0.5 leading-snug">{text}</p>
       <div className="pointer-events-none absolute -bottom-8 -right-8 h-24 w-24 rounded-full bg-gradient-to-br from-red-600/10 via-black/5 to-green-600/10" />
     </div>
   );
@@ -449,9 +390,9 @@ function Step({ number, title, text }: { number: string; title: string; text: st
 function Card({ icon, title, text }: { icon: React.ReactNode; title: string; text: string }) {
   return (
     <div className="relative overflow-hidden rounded-2xl border border-gray-200 bg-white p-6 text-center shadow-sm hover:shadow-md transition">
-      <div className="mb-3">{icon}</div>
-      <h3 className="font-semibold text-lg mb-1 text-gray-900">{title}</h3>
-      <p className="text-gray-600 text-sm">{text}</p>
+      <div className="mb-2">{icon}</div>
+      <h3 className="font-semibold text-lg mb-0.5 text-gray-900">{title}</h3>
+      <p className="text-gray-600 text-sm leading-snug">{text}</p>
       <div className="pointer-events-none absolute -top-10 -left-10 h-24 w-24 rounded-full bg-gradient-to-br from-green-600/10 via-black/5 to-red-600/10" />
     </div>
   );

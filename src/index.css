@@ -258,3 +258,8 @@ button:hover, .btn:hover {
 .leaflet-marker-icon.marker-inactive {
   filter: hue-rotate(-50deg) saturate(5) brightness(0.9);
 }
+
+/* Scrollbar fine, neutre */
+*::-webkit-scrollbar { height: 6px; width: 6px; }
+*::-webkit-scrollbar-thumb { background: rgba(0,0,0,.18); border-radius: 9999px; }
+*::-webkit-scrollbar-track { background: transparent; }
