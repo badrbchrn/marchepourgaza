@@ -28,6 +28,22 @@ export default function AppShell() {
     };
   }, []);
 
+  // Désactive la restauration auto du scroll par le navigateur (global)
+  useEffect(() => {
+    if ("scrollRestoration" in window.history) {
+      const prev = window.history.scrollRestoration;
+      window.history.scrollRestoration = "manual";
+      return () => {
+        window.history.scrollRestoration = prev;
+      };
+    }
+  }, []);
+
+  // Remonte en haut à chaque changement d’URL (route et/ou query)
+  useEffect(() => {
+    window.scrollTo({ top: 0, left: 0, behavior: "auto" });
+  }, [location.pathname, location.search]);
+
   const handleLogout = async () => {
     await supabase.auth.signOut();
     navigate("/");

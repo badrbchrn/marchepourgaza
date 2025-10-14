@@ -15,7 +15,7 @@ const FORCE_LIVE = false;
 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
-  { ville: "Genève (Pont du Mont-Blanc)", km: "0 km", heure: "07h00 (sam.)" },
+  { ville: "Genève (Bains-des-Pâquis)", km: "0 km", heure: "07h00 (sam.)" },
   { ville: "Versoix", km: "10 km", heure: "09h00" },
   { ville: "Nyon", km: "25 km", heure: "12h00" },
   { ville: "Rolle", km: "40 km", heure: "15h00" },
@@ -64,7 +64,7 @@ const LEMAN_BOUNDS: [[number, number], [number, number]] = [
 // Contour plus précis du lac (≈ 40 points, sens horaire)
 const LEMAN_OUTLINE: [number, number][] = [
   // ⬆️ rive nord (Suisse) Genève → Villeneuve
-  [46.205, 6.147], // Genève, Pont du Mont-Blanc
+  [46.205, 6.147], // Genève, Bains-des-Pâquis
   [46.224, 6.171], // Cologny
   [46.250, 6.190], // Anières
   [46.283, 6.214], // Versoix
@@ -248,7 +248,7 @@ export default function Marche() {
               {/* Seule pastille rouge : départ Genève */}
               <Marker position={[46.205, 6.147]} icon={startIcon}>
                 <Popup>
-                  <strong>Genève — Pont du Mont-Blanc</strong>
+                  <strong>Genève — Bains-des-Pâquis</strong>
                   <br />
                   Départ prévu : <strong>07h00 (sam.)</strong>
                 </Popup>

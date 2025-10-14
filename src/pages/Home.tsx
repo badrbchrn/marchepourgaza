@@ -9,6 +9,9 @@ import {
   Handshake,
   HeartHandshake,
   ExternalLink,
+  Bell,
+  UserPlus,
+  LogIn,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState } from "react";
@@ -37,6 +40,8 @@ export default function Home() {
   const [sponsorshipCount, setSponsorshipCount] = useState(0);
   const [waitingCount, setWaitingCount] = useState(0);
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
+  const [pendingMine, setPendingMine] = useState(0);
+  const [isLoggedIn, setIsLoggedIn] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -88,6 +93,21 @@ export default function Home() {
         setTotalFunds(0);
       }
 
+      // Auth + demandes "pending"
+      const { data: authUser } = await supabase.auth.getUser();
+      const uid = authUser?.user?.id;
+      setIsLoggedIn(!!uid);
+
+      if (uid) {
+        const { count: pend } = await supabase
+          .from("sponsorships")
+          .select("*", { count: "exact", head: true })
+          .eq("status", "pending")
+          .or(`runner_id.eq.${uid},sponsor_id.eq.${uid}`);
+        setPendingMine(pend || 0);
+      } else {
+        setPendingMine(0);
+      }
     };
 
     fetchData();
@@ -102,14 +122,77 @@ export default function Home() {
         variants={fadeUp}
         className="min-h-[calc(100vh-80px)] flex flex-col md:flex-row items-center justify-between px-6 md:px-16 lg:px-24 bg-gradient-to-br from-gray-100 via-white to-gray-50 py-16"
       >
-        {/* Texte d’intro */}
-        <motion.div variants={fadeUp} className="flex-1 md:pr-12 text-center md:text-left space-y-5">
+        {/* Texte d’intro (positioning context for banners) */}
+        <motion.div
+          variants={fadeUp}
+          className="relative flex-1 md:pr-12 text-center md:text-left space-y-5"
+        >
+          {/* 🔔 Banner inside hero: mobile in-flow, md absolute above the heading */}
+          {isLoggedIn && pendingMine > 0 && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="mt-2 md:mt-0 md:absolute md:-top-12 md:left-0 md:right-0"
+            >
+              <Link
+                to="/participer"
+                className="group block w-full md:max-w-xl mx-auto md:mx-0"
+                aria-label="Gérer mes demandes en attente"
+              >
+                <div className="flex items-center justify-center gap-2 rounded-lg border border-amber-200/60 bg-amber-50/60 backdrop-blur-[2px]
+                                px-3 py-2 md:px-3 md:py-1.5 text-amber-900 shadow-sm
+                                hover:bg-amber-50/80 hover:border-amber-300 transition">
+                  <Bell className="h-4 w-4 text-amber-600" />
+                  <span className="text-[13px] md:text-[12.5px] font-medium text-center leading-tight">
+                    {pendingMine === 1
+                      ? "1 demande de parrainage en attente."
+                      : `${pendingMine} demandes de parrainage en attente.`}
+                  </span>
+                  <span className="ml-1 inline-flex items-center gap-1 text-[11.5px] font-semibold">
+                    Gérer maintenant
+                    <ArrowRight className="h-3.5 w-3.5 opacity-80 transition-transform group-hover:translate-x-0.5" />
+                  </span>
+                </div>
+              </Link>
+            </motion.div>
+          )}
+
+          {!isLoggedIn && (
+            <motion.div
+              initial={{ opacity: 0, y: -6 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.25 }}
+              className="mt-2 md:mt-0 md:absolute md:-top-12 md:left-0 md:right-0"
+            >
+              <Link
+                to="/signup"
+                className="group block w-full md:max-w-xl mx-auto md:mx-0"
+                aria-label="Créer un compte pour interagir"
+              >
+                <div className="flex items-center justify-center gap-2 rounded-lg border border-rose-200/60 bg-rose-50/55 backdrop-blur-[2px]
+                                px-3 py-2 md:px-3 md:py-1.5 text-rose-900 shadow-sm
+                                hover:bg-rose-50/75 hover:border-rose-300 transition">
+                  <LogIn className="h-4 w-4 text-rose-600" />
+                  <span className="text-[13px] md:text-[12.5px] font-medium text-center leading-tight">
+                    Il faut un compte pour interagir (parrainer, accepter, etc.).{" "}
+                    <span className="underline underline-offset-2 decoration-rose-400">
+                      Créer mon compte
+                    </span>
+                  </span>
+                  
+                </div>
+              </Link>
+            </motion.div>
+          )}
+
           <h1 className="text-4xl md:text-6xl font-extrabold leading-tight text-gray-900">
             Marche solidaire <br /> autour du Léman <br />
             <span className="bg-gradient-to-r from-red-600 via-black to-green-600 bg-clip-text text-transparent">
               pour Gaza
             </span>
           </h1>
+
           <p className="text-lg text-gray-700 max-w-lg mx-auto md:mx-0 leading-snug">
             Rejoignez une marche de <strong>180 km</strong> autour du lac Léman
             et soutenez Gaza grâce à vos pas et vos parrains.
@@ -136,8 +219,9 @@ export default function Home() {
             </p>
           )}
 
-          {/* CTA principal */}
-          <div className="pt-1.5 flex justify-center md:justify-start">
+          {/* CTA principal (Participer + S'inscrire) */}
+          <div className="pt-1.5 flex items-center gap-3 justify-center md:justify-start">
+            {/* Participer */}
             <Link
               to="/participer"
               className="group inline-flex items-center gap-2 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
@@ -147,6 +231,16 @@ export default function Home() {
                 Participer maintenant
                 <ArrowRight className="h-4 w-4 opacity-70 group-hover:translate-x-0.5 transition" />
               </span>
+            </Link>
+
+            {/* S'inscrire (raffiné, pas de fond rouge) */}
+            <Link
+              to="/signup"
+              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm md:text-base font-semibold
+                         text-rose-700 ring-1 ring-rose-200 shadow-sm hover:bg-rose-50 hover:ring-rose-300 transition"
+            >
+              <UserPlus className="h-4 w-4" />
+              S’inscrire
             </Link>
           </div>
         </motion.div>
@@ -231,7 +325,7 @@ export default function Home() {
 
       <SectionDivider color="gaza" />
 
-      {/* ---------------- Section combinée : Comment donner ? + Yaffa (compacte) ---------------- */}
+      {/* ---------------- Comment donner ? + Yaffa ---------------- */}
       <motion.section
         initial="hidden"
         whileInView="visible"
@@ -248,7 +342,7 @@ export default function Home() {
           </div>
 
           <div className="mt-6 grid gap-5 md:grid-cols-2">
-            {/* Colonne TWINT */}
+            {/* TWINT */}
             <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-7">
               <h3 className="text-lg font-bold text-slate-900">Donner via TWINT</h3>
               <p className="mt-1 text-slate-700 leading-snug">
@@ -273,7 +367,7 @@ export default function Home() {
               </p>
             </div>
 
-            {/* Colonne Yaffa (résumé, sans bouton de don supplémentaire) */}
+            {/* Yaffa */}
             <div className="rounded-3xl border border-gray-200 bg-white p-6 shadow-sm md:p-7">
               <div className="flex items-start gap-3">
                 <img src="/media/logoYAFFA.png" alt="Association Yaffa" className="h-9 w-9 object-contain" />
@@ -325,7 +419,7 @@ export default function Home() {
             La carte de suivi en direct sera disponible <strong>le jour de la marche</strong>. Suivez le parcours et les participants.
           </p>
 
-          <div className="mt-1.5 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
+        <div className="mt-1.5 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
             <div className="rounded-3xl bg-gradient-to-br from-green-50 via-white to-red-50 border border-gray-200/70 shadow-inner p-9 flex flex-col items-center justify-center space-y-3.5">
               <CheckCircle className="w-10 h-10 text-green-600" />
               <p className="text-base font-semibold text-gray-800">Bientôt disponible — Suivez-nous pour le départ</p>
