@@ -66,6 +66,24 @@ const isAdminSponsor = (s: SponsorLite) => {
 /* --- Preset: tailles pastilles alignées sur RunnerCard --- */
 const CHIP_SIZE = "px-2 py-1 text-[clamp(10px,1.5vw,12px)]";
 
+/* --- Detect hover support --- */
+function useHasHover() {
+  const [hasHover, setHasHover] = useState(true);
+  useEffect(() => {
+    if (typeof window === "undefined" || !window.matchMedia) return;
+    const mq = window.matchMedia("(hover: hover)");
+    setHasHover(mq.matches);
+    const onChange = (e: MediaQueryListEvent) => setHasHover(e.matches);
+    if (mq.addEventListener) mq.addEventListener("change", onChange);
+    else mq.addListener(onChange);
+    return () => {
+      if (mq.removeEventListener) mq.removeEventListener("change", onChange);
+      else mq.removeListener(onChange);
+    };
+  }, []);
+  return hasHover;
+}
+
 /* --- Auto fit “Potentiel” (sans boucle) --- */
 function AutoFitNumber({
   value,
@@ -100,7 +118,7 @@ function AutoFitNumber({
       next = Math.max(min, Math.floor(max * ratio * 0.98));
     }
     if (next !== fs) setFs(next);
-  }, [value, min, max]);
+  }, [value, min, max]); // eslint-disable-line react-hooks/exhaustive-deps
 
   return (
     <span
@@ -116,7 +134,7 @@ function AutoFitNumber({
   );
 }
 
-/* ---------- Fond média (basé sur ta version, mais sans démonter les <source>) ---------- */
+/* ---------- Fond média ---------- */
 function BackgroundMedia({
   artist,
   containerRef,
@@ -132,7 +150,6 @@ function BackgroundMedia({
   const posterSrc = artist.video?.poster || artist.image || undefined;
   const hasVideo = !reduce && !!artist.video?.sources?.length;
 
-  // Observer la visibilité avec une petite hystérésis (démarre >=0.85, pause <0.6)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -145,7 +162,6 @@ function BackgroundMedia({
     return () => io.disconnect();
   }, [containerRef]);
 
-  // Lecture/pause SANS retirer les sources (le poster reste toujours visible)
   useEffect(() => {
     const v = videoRef.current;
     if (!v || !hasVideo) return;
@@ -163,7 +179,6 @@ function BackgroundMedia({
     }
   }, [ratio, hasVideo]);
 
-  // Nettoyage
   useEffect(() => {
     return () => {
       try { videoRef.current?.pause(); } catch {}
@@ -182,7 +197,6 @@ function BackgroundMedia({
     ) : null;
   }
 
-  // IMPORTANT: on laisse les <source> TOUJOURS montés → pas d’écran noir
   return (
     <>
       <video
@@ -205,7 +219,6 @@ function BackgroundMedia({
         ))}
       </video>
 
-      {/* Tap pour forcer la lecture si l’autoplay est bloqué (mobile) */}
       {!playing && (
         <button
           type="button"
@@ -225,14 +238,29 @@ function BackgroundMedia({
   );
 }
 
-/* --- Pastille parrain (alignée RunnerCard) --- */
+/* --- Pastille parrain (avec visibilité du hover sur mobile pour admin) --- */
 function SponsorChip({ s, pending }: { s: SponsorLite; pending?: boolean }) {
+  const hasHover = useHasHover();
+  const [touched, setTouched] = useState(false);
+
+  useEffect(() => {
+    if (!touched) return;
+    const t = setTimeout(() => setTouched(false), 1200);
+    return () => clearTimeout(t);
+  }, [touched]);
+
   const admin = isAdminSponsor(s);
+  const auraVisible = !hasHover || touched;
 
   if (admin) {
     return (
       <span
         key={s.id}
+        tabIndex={0}
+        onTouchStart={() => setTouched(true)}
+        onPointerDown={(e) => { if ((e as any).pointerType === "touch") setTouched(true); }}
+        onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") setTouched(true); }}
+        onBlur={() => setTouched(false)}
         className={`group relative inline-flex items-center gap-1.5 ${CHIP_SIZE} rounded-full
                     font-semibold text-red-50
                     bg-red-600/15 border border-red-400/50 backdrop-blur-md
@@ -242,20 +270,24 @@ function SponsorChip({ s, pending }: { s: SponsorLite; pending?: boolean }) {
       >
         <Shield className="h-[1.05em] w-[1.05em] text-red-200" aria-hidden />
         <span className="relative z-10">{s.sponsor?.full_name}</span>
+
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-full
-                     bg-[radial-gradient(120%_70%_at_50%_-20%,rgba(255,255,255,.18),transparent_60%)]"
+          className={`pointer-events-none absolute inset-0 rounded-full
+                     bg-[radial-gradient(120%_70%_at_50%_-20%,rgba(255,255,255,.18),transparent_60%)]
+                     ${auraVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity duration-200`}
         />
         <span
           aria-hidden
-          className="pointer-events-none absolute -inset-2 rounded-full
-                     bg-red-500/15 blur-md opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          className={`pointer-events-none absolute -inset-2 rounded-full
+                     bg-red-500/15 blur-md
+                     ${auraVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity duration-200`}
         />
         <span
           aria-hidden
-          className="pointer-events-none absolute inset-0 rounded-full
-                     ring-2 ring-red-400/70 opacity-0 group-hover:opacity-100 transition-opacity duration-200"
+          className={`pointer-events-none absolute inset-0 rounded-full
+                     ring-2 ring-red-400/70
+                     ${auraVisible ? "opacity-100" : "opacity-0 group-hover:opacity-100"} transition-opacity duration-200`}
         />
       </span>
     );
@@ -330,13 +362,10 @@ function ArtistCardInner({
         containIntrinsicSize: "360px 280px",
       }}
     >
-      {/* Fond vidéo / image */}
       <BackgroundMedia artist={artist} containerRef={containerRef} />
 
-      {/* Vignette */}
       <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/15 to-transparent pointer-events-none" />
 
-      {/* Badge artiste — centré */}
       {artist.titleBadge && (
         <div className="relative z-10 flex justify-center mt-2">
           <div className="inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-[12px] font-semibold border border-white/30 bg-white/10 backdrop-blur shadow-[0_8px_22px_-10px_rgba(255,255,255,0.35)]">
@@ -346,13 +375,11 @@ function ArtistCardInner({
         </div>
       )}
 
-      {/* En-tête */}
       <div className="relative px-4 sm:px-5 pt-4">
         <p className="font-semibold text-[clamp(14px,2.2vw,18px)] leading-tight">{runner.full_name}</p>
         <p className="text-[clamp(12px,1.8vw,14px)] text-white/85">{runner.city}</p>
       </div>
 
-      {/* Stats */}
       <div className="relative px-4 sm:px-5 mt-3">
         <div className="rounded-2xl border border-white/15 bg-white/5 px-3 py-3 md:px-4 md:py-3.5 backdrop-blur-sm">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 md:gap-4">
@@ -380,7 +407,6 @@ function ArtistCardInner({
         </div>
       </div>
 
-      {/* Réseaux sociaux centrés */}
       {(artist.social?.instagram || artist.social?.spotify) && (
         <div className="mt-3 flex justify-center">
           <div className="flex items-center gap-2 rounded-full border border-white/25 bg-white/10 backdrop-blur px-3 py-1">
@@ -403,15 +429,11 @@ function ArtistCardInner({
         </div>
       )}
 
-      {/* Parrainages (chips) — hauteur adaptative alignée RunnerCard */}
       <div className="relative px-4 sm:px-5 mt-3 mb-4">
         {(accepted.length + pending.length > 0) ? (
           <>
             <p className="text-[clamp(10px,1.5vw,12px)] font-semibold text-white/95 mb-1">Parrainages</p>
-            <div
-              className="rounded-xl border border-white/15 bg-white/5 px-3 py-2
-                         backdrop-blur-sm min-h-16"
-            >
+            <div className="rounded-xl border border-white/15 bg-white/5 px-3 py-2 backdrop-blur-sm min-h-16">
               <div className="flex flex-wrap gap-2 items-start content-start">
                 {accepted.map((s) => <SponsorChip key={`a-${s.id}`} s={s} />)}
                 {pending.map((s) => <SponsorChip key={`p-${s.id}`} s={s} pending />)}
@@ -425,7 +447,6 @@ function ArtistCardInner({
         )}
       </div>
 
-      {/* CTA */}
       <button
         title={
           isActionDisabled
@@ -474,7 +495,7 @@ function Stat({ label, value, unit }: { label: string; value: number | string; u
   );
 }
 
-/* ---------- Memo + equality check (évite les re-renders) ---------- */
+/* ---------- Memo + equality check ---------- */
 function areEqual(prev: ArtistCardProps, next: ArtistCardProps) {
   if (prev.artist.key !== next.artist.key) return false;
   if (prev.runner.id !== next.runner.id) return false;

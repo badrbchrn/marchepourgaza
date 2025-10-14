@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState, useRef, useCallback, startTransition, lazy, Suspense } from "react";
 import { supabase } from "@/lib/supabaseClient";
-// ⬇️ Code-split le composant lourd
 const RunnerCard = lazy(() => import("@/components/RunnerCard"));
 
 import {
@@ -23,18 +22,35 @@ export default function Participer() {
   const [user, setUser] = useState<any>(null);
   const [runners, setRunners] = useState<any[]>([]);
   const [sponsorships, setSponsorships] = useState<any[]>([]);
-  const [waitingCount, setWaitingCount] = useState(0); // 👈 nouveau
+  const [waitingCount, setWaitingCount] = useState(0);
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
+
+  // --- Confirm modal state ---
+  const [confirmState, setConfirmState] = useState<{ id: string | null; open: boolean; label?: string }>({
+    id: null,
+    open: false,
+    label: undefined,
+  });
+
+  // --- Theming consts (palette Gaza) ---
+  const GAZA_TEXT = "bg-clip-text text-transparent bg-[linear-gradient(90deg,#007a3d,#000,#ce1126)]";
+  const GAZA_BG = "bg-[linear-gradient(90deg,#007a3d,#000,#ce1126)] text-white";
 
   // Config
   const MAIN_RUNNER_ID = import.meta.env.VITE_LYAN_ID as string | undefined;
   const TOP_PARRAINS_LIMIT = 1;
 
-  // 🚀 Progressive rendering
-  const INITIAL_CHUNK = 9;
-  const CHUNK = 9;
+  // 🚀 Progressive rendering — dynamiques pour mobile / data-saver
+  const computeChunk = () => {
+    const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    // @ts-ignore
+    const saveData = typeof navigator !== "undefined" && navigator?.connection?.saveData;
+    return (isMobile || saveData) ? 6 : 9;
+  };
+  const CHUNK = useMemo(() => computeChunk(), []);
+  const INITIAL_CHUNK = CHUNK;
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
@@ -46,7 +62,7 @@ export default function Participer() {
   }, []);
   useEffect(() => {
     setVisibleCount(INITIAL_CHUNK);
-  }, [nameQuery]);
+  }, [nameQuery, INITIAL_CHUNK]);
 
   // 🔕 Pas de polling agressif onglet caché
   const isTabVisibleRef = useRef<boolean>(typeof document !== "undefined" ? document.visibilityState === "visible" : true);
@@ -62,6 +78,15 @@ export default function Participer() {
     !!p?.full_name && p.full_name.trim().length >= 2 &&
     !!p?.city && p.city.trim().length >= 2 &&
     !!p?.phone && p.phone.trim().length >= 6;
+
+  // --- Confirm helpers ---
+  const openConfirm = (id: string, label?: string) => setConfirmState({ id, open: true, label });
+  const closeConfirm = () => setConfirmState({ id: null, open: false, label: undefined });
+  const confirmCancel = async () => {
+    if (!confirmState.id) return;
+    await cancelSponsorship(confirmState.id);
+    closeConfirm();
+  };
 
   const toggleSelfSponsorship = async () => {
     if (!user) return showToast("error", "Connectez-vous pour utiliser cette option");
@@ -202,7 +227,7 @@ export default function Participer() {
         return isRunnerOk;
       });
 
-      // 👇 Calcul "en attente de parrain" (comme Home)
+      // 👇 Calcul "en attente de parrain"
       const allRunners = (profilesData || []).filter((r: any) => r.role === "runner" && !!r.full_name);
       const accepted = (allSponsorships || []).filter((s: any) => s.status === "accepted");
       const acceptedSet = new Set(accepted.map((s: any) => s?.runner?.id).filter(Boolean));
@@ -241,22 +266,21 @@ export default function Participer() {
     };
   }, [fetchData]);
 
-  // Infinite-scroll sentinel (progressively mount cards)
+  // Infinite-scroll sentinel
   useEffect(() => {
     if (!loadMoreRef.current) return;
-    const el = loadMoreRef.current;
+    const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    const rootMargin = isMobile ? "300px 0px" : "600px 0px";
     const io = new IntersectionObserver(
       (entries) => {
         const [e] = entries;
-        if (e.isIntersecting) {
-          setVisibleCount((v) => v + CHUNK);
-        }
+        if (e.isIntersecting) setVisibleCount((v) => v + CHUNK);
       },
-      { rootMargin: "600px 0px" }
+      { rootMargin }
     );
-    io.observe(el);
+    io.observe(loadMoreRef.current);
     return () => io.disconnect();
-  }, []);
+  }, [CHUNK]);
 
   const sponsorsByRunner = useMemo(() => {
     const map: Record<string, { accepted: Array<any>; pending: Array<any> }> = {};
@@ -308,15 +332,8 @@ export default function Participer() {
 
   const globalAcceptedCount = acceptedOnly.length;
 
-  const topRunnerIds = useMemo(() => {
-    const pool = runners.filter((r) => r.is_artist !== true && (!MAIN_RUNNER_ID || r.id !== MAIN_RUNNER_ID));
-    const ranked = pool
-      .map((r) => ({ id: r.id, count: sponsorsByRunner[r.id]?.accepted.length || 0 }))
-      .sort((a, b) => b.count - a.count);
-    return new Set(ranked.slice(0, TOP_PARRAINS_LIMIT).map((x) => x.id));
-  }, [runners, sponsorsByRunner, MAIN_RUNNER_ID, TOP_PARRAINS_LIMIT]);
-
-  const orderedRunners = useMemo(() => {
+  // --- Grouping for "Profils à soutenir" (lyan / artistes / marcheurs leaderboard)
+  const { mainProfile, artistsGroup, topGroup, remainingGroup } = useMemo(() => {
     const list = [...runners];
 
     const main = MAIN_RUNNER_ID ? list.find((p) => p.id === MAIN_RUNNER_ID) : null;
@@ -327,33 +344,37 @@ export default function Participer() {
 
     const runnerPool = list.filter((p) => p.is_artist !== true && (!MAIN_RUNNER_ID || p.id !== MAIN_RUNNER_ID));
 
-    const topParrains = runnerPool
+    const rankedCounts = runnerPool
       .map((r) => ({ r, count: sponsorsByRunner[r.id]?.accepted.length || 0 }))
-      .sort((a, b) => b.count - a.count)
-      .filter((_, idx) => idx < TOP_PARRAINS_LIMIT)
-      .map((x) => x.r);
+      .sort((a, b) => b.count - a.count);
 
+    const topParrains = rankedCounts.slice(0, TOP_PARRAINS_LIMIT).map((x) => x.r);
+
+    const topIds = new Set(topParrains.map((x) => x.id));
     const remaining = runnerPool
-      .filter((r) => !topRunnerIds.has(r.id))
+      .filter((r) => !topIds.has(r.id))
       .sort((a, b) => (potentialByRunner.get(b.id) || 0) - (potentialByRunner.get(a.id) || 0));
 
-    const seen = new Set<string>();
-    const result: any[] = [];
+    return {
+      mainProfile: main ? [main] : [],
+      artistsGroup: artists,
+      topGroup: topParrains,
+      remainingGroup: remaining,
+    };
+  }, [runners, sponsorsByRunner, potentialByRunner, MAIN_RUNNER_ID, TOP_PARRAINS_LIMIT]);
 
-    if (main && !seen.has(main.id)) { result.push(main); seen.add(main.id); }
-    for (const p of artists) if (!seen.has(p.id)) { result.push(p); seen.add(p.id); }
-    for (const p of topParrains) if (!seen.has(p.id)) { result.push(p); seen.add(p.id); }
-    for (const p of remaining) if (!seen.has(p.id)) { result.push(p); seen.add(p.id); }
-
-    return result;
-  }, [runners, sponsorsByRunner, potentialByRunner, MAIN_RUNNER_ID, TOP_PARRAINS_LIMIT, topRunnerIds]);
-
-  // 🔎 Filtre final par recherche
-  const filteredRunners = useMemo(() => {
-    if (!nameQuery) return orderedRunners;
+  // 🔎 Filtre final par recherche (par groupe)
+  const filteredGroups = useMemo(() => {
+    if (!nameQuery) return { main: mainProfile, artists: artistsGroup, top: topGroup, remaining: remainingGroup };
     const q = normalize(nameQuery);
-    return orderedRunners.filter((r: any) => normalize(r.full_name).includes(q));
-  }, [orderedRunners, nameQuery, normalize]);
+    const f = (arr: any[]) => arr.filter((r) => normalize(r.full_name).includes(q));
+    return {
+      main: f(mainProfile),
+      artists: f(artistsGroup),
+      top: f(topGroup),
+      remaining: f(remainingGroup),
+    };
+  }, [nameQuery, normalize, mainProfile, artistsGroup, topGroup, remainingGroup]);
 
   // ---- Utils ----
   const chf = (n: number) =>
@@ -364,23 +385,34 @@ export default function Participer() {
     []
   );
 
+  // Correction fromNow
   const fromNow = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso).getTime();
     const diff = Date.now() - d;
     const rtf = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
+
     const abs = Math.abs(diff);
-    const sec = Math.round(abs / 1000);
-    const min = Math.round(sec / 60);
-    const hr = Math.round(min / 60);
-    const day = Math.round(hr / 24);
-    if (sec < 60) return rtf.format(-Math.sign(diff) * sec, "seconds");
-    if (min < 60) return rtf.format(-Math.sign(diff) * min, "minutes");
-    if (hr < 24) return rtf.format(-Math.sign(diff) * hr, "hours");
-    return rtf.format(-Math.sign(diff) * day, "days");
+    const sec = Math.floor(abs / 1000);
+    const min = Math.floor(sec / 60);
+    const hr = Math.floor(min / 60);
+    const day = Math.floor(hr / 24);
+
+    const sign = diff >= 0 ? -1 : 1;
+
+    if (sec < 60) return rtf.format(sign * sec, "second");
+    if (min < 60) return rtf.format(sign * min, "minute");
+    if (hr < 24) return rtf.format(sign * hr, "hour");
+    if (day < 30) return rtf.format(sign * day, "day");
+
+    const month = Math.floor(day / 30);
+    if (month < 12) return rtf.format(sign * month, "month");
+
+    const year = Math.floor(month / 12);
+    return rtf.format(sign * year, "year");
   };
 
-  // ✅ Ces useMemo DOIVENT être avant tout return conditionnel
+  // ✅ Mémos avant tout return conditionnel
   const pendingForMeAsRunner = useMemo(
     () => sponsorships.filter((s) => s.status === "pending" && s.runner?.id === user?.id),
     [sponsorships, user?.id]
@@ -391,12 +423,26 @@ export default function Participer() {
   );
   const pendingCount = pendingForMeAsRunner.length + pendingSentByMe.length;
 
-  // ✅ Nettoyage de l’IIFE : calcul top-level, rendu stable
   const selfSponsor = useMemo(
     () => (user ? sponsorships.find((s) => s.runner?.id === user.id && s.sponsor?.id === user.id) || null : null),
     [sponsorships, user?.id]
   );
   const selfSponsorActive = !!selfSponsor;
+
+  // 👉 IMPORTANT : ces deux useMemo DOIVENT être avant tout return conditionnel
+  const myActive = useMemo(
+    () => sponsorships.filter((s) => s.status === "accepted" && (s.runner?.id === user?.id || s.sponsor?.id === user?.id)),
+    [sponsorships, user?.id]
+  );
+  const myActiveTotal = useMemo(
+    () =>
+      myActive.reduce((sum, s) => {
+        const km = Number(s.runner?.expected_km) || 0;
+        const line = (Number(s.pledge_per_km) || 0) * km;
+        return sum + (Number.isFinite(line) ? line : 0);
+      }, 0),
+    [myActive]
+  );
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen text-gray-500 text-lg">Chargement...</div>;
@@ -409,38 +455,70 @@ export default function Participer() {
   const myRunnerPotential = user?.role === "runner" ? (potentialByRunner.get(user.id) || 0) : 0;
   const mySponsorPotential = user ? (potentialBySponsor.get(user.id) || 0) : 0;
 
+  // --- Helper pour répartir le visibleCount par groupe (garde l’infinite scroll)
+  const computeVisibleByGroup = (groups: { main: any[]; artists: any[]; top: any[]; remaining: any[] }) => {
+    let left = visibleCount;
+    const take = (arr: any[]) => {
+      const out = arr.slice(0, Math.max(0, left));
+      left = Math.max(0, left - out.length);
+      return out;
+    };
+    const mainV = take(groups.main);
+    const artistsV = take(groups.artists);
+    const topV = take(groups.top);
+    const remainingV = take(groups.remaining);
+    return { mainV, artistsV, topV, remainingV, allCount: groups.main.length + groups.artists.length + groups.top.length + groups.remaining.length };
+  };
+
+  const { mainV, artistsV, topV, remainingV, allCount } = computeVisibleByGroup(filteredGroups);
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 px-3 md:px-6 py-10 md:py-16">
       {(isGuest || isIncomplete) && (
-      <>
-        {/* Mini-bannière pill ultra-fine */}
-        <motion.div
-          className="fixed left-0 right-0 z-40 pointer-events-none top-[70px] sm:top-[82px]"
-          initial={{ opacity: 0, y: -6 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: prefersReducedMotion ? 0 : 0.22 }}
-          role="alert"
-          aria-live="polite"
-        >
-          <div className="mx-auto px-3">
-            <div className="pointer-events-auto mx-auto w-fit max-w-[92vw]">
-              <div className="inline-flex items-center gap-2 rounded-full bg-white/80 text-red-700 ring-1 ring-red-200/70 shadow-sm px-2.5 py-1">
-                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600" />
-                <p className="text-[12px] sm:text-[13px] font-medium leading-none whitespace-normal">
-                  {isGuest
-                    ? <>Vous n’êtes pas connecté. <a href="/login" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">Se connecter</a> <span className="text-red-300 mx-1">•</span> <a href="/signup" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">Créer un compte</a></>
-                    : <>Votre profil est incomplet. <a href="/onboarding" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">Compléter mon profil</a></>}
-                </p>
+        <>
+          {/* Mini-bannière pill ultra-fine */}
+          <motion.div
+            className="fixed left-0 right-0 z-40 pointer-events-none top-[70px] sm:top-[82px]"
+            initial={{ opacity: 0, y: -6 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: prefersReducedMotion ? 0 : 0.22 }}
+            role="alert"
+            aria-live="polite"
+          >
+            <div className="mx-auto px-3">
+              <div className="pointer-events-auto mx-auto w-fit max-w-[92vw]">
+                <div className="inline-flex items-center gap-2 rounded-full bg-white/80 text-red-700 ring-1 ring-red-200/70 shadow-sm px-2.5 py-1">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+                  <p className="text-[12px] sm:text-[13px] font-medium leading-none whitespace-normal">
+                    {isGuest ? (
+                      <>
+                        Vous n’êtes pas connecté.{" "}
+                        <a href="/login" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">
+                          Se connecter
+                        </a>{" "}
+                        <span className="text-red-300 mx-1">•</span>{" "}
+                        <a href="/signup" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">
+                          Créer un compte
+                        </a>
+                      </>
+                    ) : (
+                      <>
+                        Votre profil est incomplet.{" "}
+                        <a href="/onboarding" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">
+                          Compléter mon profil
+                        </a>
+                      </>
+                    )}
+                  </p>
+                </div>
               </div>
             </div>
-          </div>
-        </motion.div>
+          </motion.div>
 
-        {/* espace réduit (bannière plus fine) */}
-        <div className="h-8 sm:h-10" />
-      </>
-    )}
-
+          {/* espace réduit (bannière plus fine) */}
+          <div className="h-8 sm:h-10" />
+        </>
+      )}
 
       <motion.div
         className="text-center mb-6 md:mb-8"
@@ -466,9 +544,8 @@ export default function Participer() {
           title={user?.role === "runner" ? "Votre potentiel (marcheur)" : "Potentiel global (marcheurs)"}
           value={chf(user?.role === "runner" ? myRunnerPotential : globalPotential)}
           hint={user?.role === "runner" ? "Somme de vos parrainages acceptés" : `${globalAcceptedCount} parrainages acceptés`}
-          valueClass={user?.role === "runner" ? undefined : "text-emerald-600"}  // 👈 vert léger sur le global
+          valueClass={user?.role === "runner" ? undefined : "text-emerald-600"}
         />
-
 
         {user ? (
           <StatCard
@@ -481,10 +558,17 @@ export default function Participer() {
             title="En attente de parrain"
             value={`${waitingCount}`}
             hint="Marcheurs sans parrain"
+            valueClass="text-cyan-600"
           />
         )}
 
-        <StatCard title="Parrainages acceptés" value={`${globalAcceptedCount}`} hint="Nombre total sur la plateforme" />
+        {/* 👉 Titre + Valeur en couleurs Gaza */}
+        <StatCard
+          title="Parrainages acceptés"
+          value={`${globalAcceptedCount}`}
+          hint="Nombre total sur la plateforme"
+          valueClass={GAZA_TEXT}
+        />
       </div>
 
       <AnimatePresence>
@@ -543,159 +627,191 @@ export default function Participer() {
           </div>
         )}
 
-        {/* ---------------- Demandes en attente (modernisée) ---------------- */}
-        <Section
-          title={
-            <span className="flex items-center gap-2">
-              <Info className="w-5 h-5" />
-              Demandes en attente
-              <span className="ml-2 inline-flex items-center justify-center rounded-full bg-yellow-500/10 text-yellow-700 text-xs font-semibold px-2 py-0.5 border border-yellow-200">
-                {pendingCount}
+        {/* ---------------- Demandes en attente (UNIQUEMENT si connecté) ---------------- */}
+        {user && (
+          <Section
+            title={
+              <span className="flex items-center gap-2">
+                <Info className="w-5 h-5" />
+                Demandes en attente
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-cyan-500/10 text-cyan-700 text-xs font-semibold px-2 py-0.5 border border-cyan-200">
+                  {pendingCount}
+                </span>
               </span>
-            </span>
-          }
-          icon={null}
-          color="from-yellow-500 via-gray-700 to-yellow-800"
-        >
-          {pendingCount === 0 ? (
-            <EmptyState text="Aucune demande en attente" />
-          ) : (
-            <div className="space-y-6">
-              {pendingForMeAsRunner.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    À traiter (vous êtes le/la marcheur·euse)
-                  </h3>
-                  <div className="grid gap-3">
-                    {pendingForMeAsRunner.map((s) => {
-                      const km = Number(s.runner?.expected_km) || 0;
-                      const pledge = Number(s.pledge_per_km) || 0;
-                      const potential = pledge * km;
-                      return (
-                        <PendingItem
-                          key={s.id}
-                          title={<span><strong>{s.sponsor?.full_name || "Parrain inconnu"}</strong> souhaite parrainer <strong>{s.runner?.full_name}</strong></span>}
-                          metaLeft={[
-                            { label: "Contribution", value: `${formatCHF(pledge)}/km` },
-                            { label: "Potentiel", value: formatCHF(potential) },
-                          ]}
-                          createdAt={s.created_at}
-                          right={
-                            <div className="flex gap-2">
-                              <ActionButton
-                                text="Accepter"
-                                color="green"
-                                onClick={() => updateSponsorshipStatus(s.id, "accepted")}
-                                loading={processingId === s.id}
-                              />
-                              <ActionButton
-                                text="Refuser"
-                                color="red"
-                                onClick={() => updateSponsorshipStatus(s.id, "rejected")}
-                                loading={processingId === s.id}
-                              />
-                            </div>
-                          }
-                          fromNow={fromNow}
-                        />
-                      );
-                    })}
+            }
+            icon={null}
+            color="from-cyan-600 via-sky-700 to-cyan-800"
+          >
+            {pendingCount === 0 ? (
+              <EmptyState text="Aucune demande en attente" />
+            ) : (
+              <div className="space-y-6">
+                {pendingForMeAsRunner.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      À traiter (vous êtes le/la marcheur·euse)
+                    </h3>
+                    <div className="grid gap-3">
+                      {pendingForMeAsRunner.map((s) => {
+                        const km = Number(s.runner?.expected_km) || 0;
+                        const pledge = Number(s.pledge_per_km) || 0;
+                        const potential = pledge * km;
+                        return (
+                          <PendingItem
+                            key={s.id}
+                            title={<span><strong>{s.sponsor?.full_name || "Parrain inconnu"}</strong> souhaite parrainer <strong>{s.runner?.full_name}</strong></span>}
+                            metaLeft={[
+                              { label: "Contribution", value: `${formatCHF(pledge)}/km` },
+                              { label: "Potentiel", value: formatCHF(potential) },
+                            ]}
+                            createdAt={s.created_at}
+                            right={
+                              <div className="flex gap-2 w-full sm:w-auto justify-center items-center">
+                                <ActionButton
+                                  text="Accepter"
+                                  color="green"
+                                  onClick={() => updateSponsorshipStatus(s.id, "accepted")}
+                                  loading={processingId === s.id}
+                                />
+                                <ActionButton
+                                  text="Refuser"
+                                  color="red"
+                                  onClick={() => updateSponsorshipStatus(s.id, "rejected")}
+                                  loading={processingId === s.id}
+                                />
+                              </div>
+                            }
+                            fromNow={fromNow}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                {pendingSentByMe.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
+                      Envoyées (en attente du/de la marcheur·euse)
+                    </h3>
+                    <div className="grid gap-3">
+                      {pendingSentByMe.map((s) => {
+                        const km = Number(s.runner?.expected_km) || 0;
+                        const pledge = Number(s.pledge_per_km) || 0;
+                        const potential = pledge * km;
+                        return (
+                          <PendingItem
+                            key={s.id}
+                            title={<span>Vous souhaitez parrainer <strong>{s.runner?.full_name}</strong></span>}
+                            metaLeft={[
+                              { label: "Contribution", value: `${formatCHF(pledge)}/km` },
+                              { label: "Potentiel", value: formatCHF(potential) },
+                            ]}
+                            createdAt={s.created_at}
+                            right={
+                              // 👉 poubelle centrée + pop-up de confirmation
+                              <button
+                                onClick={() => openConfirm(s.id, "Annuler la demande ?")}
+                                disabled={processingId === s.id}
+                                className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50 w-10 h-10"
+                                title="Annuler la demande"
+                                aria-label="Annuler la demande"
+                              >
+                                {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                              </button>
+                            }
+                            fromNow={fromNow}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </Section>
+        )}
+
+        {/* ---------------- Parrainages actifs (UNE grande section horizontale) ---------------- */}
+        {user && (
+          <Section title="Parrainages actifs" icon={<UserCheck className="w-5 h-5" />} color="from-[#007a3d] via-black to-[#ce1126]">
+            {myActive.length === 0 ? (
+              <EmptyState text="Aucun parrainage actif" />
+            ) : (
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="inline-flex items-center gap-2 text-sm">
+                    <span className="rounded-full border border-gray-200 bg-white/70 backdrop-blur px-2.5 py-1 text-gray-700">
+                      Liens actifs&nbsp;: <strong className="text-gray-900">{myActive.length}</strong>
+                    </span>
+                    <span className="rounded-full border border-gray-200 bg-white/70 backdrop-blur px-2.5 py-1 text-gray-700">
+                      Total potentiel&nbsp;: <strong className="text-gray-900">{formatCHF(myActiveTotal)}</strong>
+                    </span>
                   </div>
                 </div>
-              )}
 
-              {pendingSentByMe.length > 0 && (
-                <div>
-                  <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                    Envoyées (en attente du/de la marcheur·euse)
-                  </h3>
-                  <div className="grid gap-3">
-                    {pendingSentByMe.map((s) => {
-                      const km = Number(s.runner?.expected_km) || 0;
-                      const pledge = Number(s.pledge_per_km) || 0;
-                      const potential = pledge * km;
+                <div
+                  className="relative rounded-2xl border border-gray-200 bg-white/60 backdrop-blur p-2 sm:p-3 shadow-sm"
+                  role="region"
+                  aria-label="Carrousel des parrainages actifs"
+                >
+                  <div className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
+                    {myActive.map((s) => {
+                      const isRunner = s.runner?.id === user?.id;
+                      const runner = s.runner;
+                      const sponsor = s.sponsor;
+                      const km = Number(runner?.expected_km) || 0;
+                      const linePotential = (Number(s.pledge_per_km) || 0) * km;
+
                       return (
-                        <PendingItem
+                        <article
                           key={s.id}
-                          title={<span>Vous souhaitez parrainer <strong>{s.runner?.full_name}</strong></span>}
-                          metaLeft={[
-                            { label: "Contribution", value: `${formatCHF(pledge)}/km` },
-                            { label: "Potentiel", value: formatCHF(potential) },
-                          ]}
-                          createdAt={s.created_at}
-                          right={
+                          className="shrink-0 snap-start min-w-[260px] sm:min-w-[320px] rounded-2xl border border-gray-200 bg-white/80 backdrop-blur-md p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
+                          aria-label={`Parrainage de ${runner?.full_name || "marcheur"} ${isRunner ? "par" : "avec"} ${sponsor?.full_name || ""}`}
+                        >
+                          <header className="flex items-center gap-3">
+                            <div className={`shrink-0 w-10 h-10 rounded-full ${GAZA_BG} flex items-center justify-center font-bold text-[11px]`}>
+                              {String(runner?.full_name || "?").slice(0, 2).toUpperCase()}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="font-semibold text-gray-900 truncate">{runner?.full_name || "Marcheur inconnu"}</p>
+                              <p className={`text-[12px] leading-none font-semibold ${GAZA_TEXT}`}>
+                                {isRunner ? `Parrain : ${sponsor?.full_name || "Inconnu"}` : `Vous parrainez ce marcheur`}
+                              </p>
+                            </div>
                             <button
-                              onClick={() => cancelSponsorship(s.id)}
+                              onClick={() => openConfirm(s.id, "Annuler ce parrainage ?")}
                               disabled={processingId === s.id}
-                              className="inline-flex items-center gap-2 px-3 py-2 rounded-xl bg-red-50 text-red-600 hover:bg-red-100 border border-red-200 disabled:opacity-50"
+                              className="ml-auto p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              title="Annuler le parrainage"
+                              aria-label="Annuler le parrainage"
                             >
                               {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                              <span>Annuler</span>
                             </button>
-                          }
-                          fromNow={fromNow}
-                        />
+                          </header>
+
+                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
+                            <Pill label="Ville" value={runner?.city || "—"} />
+                            <Pill label="Objectif" value={`${km} km`} />
+                            <Pill label="Contribution" value={`${formatCHF(Number(s.pledge_per_km) || 0)}/km`} />
+                            <Pill label="Potentiel" value={formatCHF(linePotential)} />
+                          </div>
+
+                          <footer className="mt-2 text-[11px] text-gray-500 flex items-center gap-1">
+                            <Clock className="w-3.5 h-3.5" />
+                            <span>{fromNow(s.created_at)}</span>
+                          </footer>
+                        </article>
                       );
                     })}
                   </div>
                 </div>
-              )}
-            </div>
-          )}
-        </Section>
+              </div>
+            )}
+          </Section>
+        )}
 
-        {/* ---------------- Parrainages actifs (calcul corrigé) ---------------- */}
-        <Section title="Parrainages actifs" icon={<UserCheck className="w-5 h-5" />} color="from-green-600 via-black to-red-600">
-          {sponsorships.filter((s) => s.status === "accepted" && (s.runner?.id === user?.id || s.sponsor?.id === user?.id)).length === 0 && (
-            <EmptyState text="Aucun parrainage actif" />
-          )}
-
-          <div className="grid gap-4">
-            {sponsorships
-              .filter((s) => s.status === "accepted" && (s.runner?.id === user?.id || s.sponsor?.id === user?.id))
-              .map((s) => {
-                const isRunner = s.runner?.id === user?.id;
-                const runner = s.runner;
-                const sponsor = s.sponsor;
-                // ✅ Correction : potentiel = pledge_per_km * expected_km
-                const linePotential = (Number(s.pledge_per_km) || 0) * (Number(runner?.expected_km) || 0);
-
-                return (
-                  <Card key={s.id}>
-                    <div className="flex flex-col">
-                      <p className="font-semibold text-gray-900 text-base">{runner?.full_name || "Marcheur inconnu"}</p>
-                      <div className="mt-1 grid grid-cols-2 gap-2 text-sm text-gray-700">
-                        <InfoTile label="Ville">{runner?.city || "—"}</InfoTile>
-                        <InfoTile label="Objectif">{(runner?.expected_km || 0) + " km"}</InfoTile>
-                        <InfoTile label="Contribution">{formatCHF(Number(s.pledge_per_km) || 0) + "/km"}</InfoTile>
-                        <InfoTile label="Potentiel estimé">{formatCHF(linePotential)}</InfoTile>
-                      </div>
-                      <div className="mt-2">
-                        <span
-                          className={`inline-block px-2 py-1 text-xs font-semibold rounded-full ${
-                            isRunner ? "bg-green-100 text-green-800" : "bg-blue-100 text-blue-800"
-                          }`}
-                        >
-                          {isRunner ? `Parrain : ${sponsor?.full_name || "Inconnu"}` : `Vous parrainez ce marcheur`}
-                        </span>
-                      </div>
-                    </div>
-
-                    <button
-                      onClick={() => cancelSponsorship(s.id)}
-                      disabled={processingId === s.id}
-                      className="p-2 bg-red-50 text-red-600 rounded-xl hover:bg-red-100 disabled:opacity-50"
-                      aria-label="Annuler le parrainage"
-                      title="Annuler le parrainage"
-                    >
-                      {processingId === s.id ? <Loader2 className="w-5 h-5 animate-spin" /> : <Trash2 className="w-5 h-5" />}
-                    </button>
-                  </Card>
-                );
-              })}
-          </div>
-        </Section>
-
+        {/* ---------------- Profils à soutenir (3 sous-sections) ---------------- */}
         <Section title="Profils à soutenir" icon={<Users className="w-5 h-5" />} color="from-blue-600 via-black to-green-600">
           {/* Barre de recherche */}
           <div className="mb-4 flex justify-end">
@@ -723,65 +839,197 @@ export default function Participer() {
               </div>
             }
           >
-            {filteredRunners.length === 0 ? (
+            {allCount === 0 ? (
               <EmptyState text="Aucun profil ne correspond à votre recherche." />
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                {filteredRunners.slice(0, visibleCount).map((runner: any) => {
-                  const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+              <div className="space-y-8">
+                {/* 1) Lyan */}
+                {mainV.length > 0 && (
+                  <div>
+                    
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                      {mainV.map((runner: any) => {
+                        const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                        const myLink = user
+                          ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
+                          : null;
+                        const isSelf = user ? runner.id === user.id : false;
+                        const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
+                        const actionDisabled = isSelf || isReadOnly;
+                        const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                        const myLinkStatus: "pending" | "accepted" | null =
+                          myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
 
-                  const myLink = user
-                    ? sponsorships.find(
-                        (s) =>
-                          s.runner?.id === runner.id &&
-                          s.sponsor?.id === user?.id &&
-                          ["pending", "accepted"].includes(s.status)
-                      )
-                    : null;
+                        return (
+                          <RunnerCard
+                            key={runner.id}
+                            runner={runner}
+                            isMain={true}
+                            isTop={false}
+                            accepted={agg.accepted}
+                            pending={agg.pending}
+                            potentialCHF={runnerPotential}
+                            processing={isProcessingThisCard}
+                            myLinkStatus={myLinkStatus}
+                            isActionDisabled={actionDisabled}
+                            onAction={() => {
+                              if (actionDisabled) {
+                                return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
+                              }
+                              if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                              return sendSponsorshipRequest(runner.id);
+                            }}
+                            formatCurrency={formatCHF}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
-                  const isSelf = user ? runner.id === user.id : false;
-                  const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
-                  const actionDisabled = isSelf || isReadOnly;
+                {/* 2) Artistes */}
+                {artistsV.length > 0 && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Artistes</h3>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                      {artistsV.map((runner: any) => {
+                        const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                        const myLink = user
+                          ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
+                          : null;
+                        const isSelf = user ? runner.id === user.id : false;
+                        const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
+                        const actionDisabled = isSelf || isReadOnly;
+                        const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                        const myLinkStatus: "pending" | "accepted" | null =
+                          myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
 
-                  const runnerPotential = potentialByRunner.get(runner.id) || 0;
-                  const myLinkStatus: "pending" | "accepted" | null =
-                    myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
+                        return (
+                          <RunnerCard
+                            key={runner.id}
+                            runner={runner}
+                            isMain={false}
+                            isTop={false}
+                            accepted={agg.accepted}
+                            pending={agg.pending}
+                            potentialCHF={runnerPotential}
+                            processing={isProcessingThisCard}
+                            myLinkStatus={myLinkStatus}
+                            isActionDisabled={actionDisabled}
+                            onAction={() => {
+                              if (actionDisabled) {
+                                return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
+                              }
+                              if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                              return sendSponsorshipRequest(runner.id);
+                            }}
+                            formatCurrency={formatCHF}
+                          />
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
 
-                  const isMain = !!MAIN_RUNNER_ID && runner.id === MAIN_RUNNER_ID;
-                  const isTop = topRunnerIds.has(runner.id);
+                {/* 3) Marcheurs (leaderboard) */}
+                {(topV.length > 0 || remainingV.length > 0) && (
+                  <div>
+                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Marcheurs</h3>
+                    {topV.length > 0 && (
+                      <>
+                        <p className="text-xs text-gray-500 mb-2">Meilleur nombre de parrains</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+                          {topV.map((runner: any) => {
+                            const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                            const myLink = user
+                              ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
+                              : null;
+                            const isSelf = user ? runner.id === user.id : false;
+                            const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
+                            const actionDisabled = isSelf || isReadOnly;
+                            const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                            const myLinkStatus: "pending" | "accepted" | null =
+                              myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
 
-                  return (
-                    <RunnerCard
-                      key={runner.id}
-                      runner={runner}
-                      isMain={isMain}
-                      isTop={isTop}
-                      accepted={agg.accepted}
-                      pending={agg.pending}
-                      potentialCHF={runnerPotential}
-                      processing={isProcessingThisCard}
-                      myLinkStatus={myLinkStatus}
-                      isActionDisabled={actionDisabled}
-                      onAction={() => {
-                        if (actionDisabled) {
-                          return showToast(
-                            "error",
-                            isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil."
-                          );
-                        }
-                        if (myLink) return cancelSponsorship(myLink.id);
-                        return sendSponsorshipRequest(runner.id);
-                      }}
-                      formatCurrency={formatCHF}
-                    />
-                  );
-                })}
+                            return (
+                              <div className="rounded-2xl bg-sky-50/60 border border-sky-100 p-2">
+                                <RunnerCard
+                                  key={runner.id}
+                                  runner={runner}
+                                  isMain={false}
+                                  isTop={true}
+                                  accepted={agg.accepted}
+                                  pending={agg.pending}
+                                  potentialCHF={runnerPotential}
+                                  processing={isProcessingThisCard}
+                                  myLinkStatus={myLinkStatus}
+                                  isActionDisabled={actionDisabled}
+                                  onAction={() => {
+                                    if (actionDisabled) {
+                                      return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
+                                    }
+                                    if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                                    return sendSponsorshipRequest(runner.id);
+                                  }}
+                                  formatCurrency={formatCHF}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+
+                    {remainingV.length > 0 && (
+                      <>
+                        <p className="text-xs text-gray-500 mb-2">Meilleur potentiel</p>
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                          {remainingV.map((runner: any) => {
+                            const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                            const myLink = user
+                              ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
+                              : null;
+                            const isSelf = user ? runner.id === user.id : false;
+                            const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
+                            const actionDisabled = isSelf || isReadOnly;
+                            const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                            const myLinkStatus: "pending" | "accepted" | null =
+                              myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
+
+                            return (
+                              <RunnerCard
+                                key={runner.id}
+                                runner={runner}
+                                isMain={false}
+                                isTop={false}
+                                accepted={agg.accepted}
+                                pending={agg.pending}
+                                potentialCHF={runnerPotential}
+                                processing={isProcessingThisCard}
+                                myLinkStatus={myLinkStatus}
+                                isActionDisabled={actionDisabled}
+                                onAction={() => {
+                                  if (actionDisabled) {
+                                    return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
+                                  }
+                                  if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                                  return sendSponsorshipRequest(runner.id);
+                                }}
+                                formatCurrency={formatCHF}
+                              />
+                            );
+                          })}
+                        </div>
+                      </>
+                    )}
+                  </div>
+                )}
               </div>
             )}
           </Suspense>
 
           {/* Sentinel pour charger plus */}
-          {filteredRunners.length > 0 && visibleCount < filteredRunners.length && (
+          {allCount > 0 && (mainV.length + artistsV.length + topV.length + remainingV.length) < allCount && (
             <div ref={loadMoreRef} className="mt-4 flex justify-center">
               <button
                 onClick={() => setVisibleCount((v) => v + CHUNK)}
@@ -793,6 +1041,54 @@ export default function Participer() {
           )}
         </Section>
       </div>
+
+      {/* 👉 Modal de confirmation */}
+      <AnimatePresence>
+        {confirmState.open && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[10000] bg-black/30 backdrop-blur-[2px] flex items-center justify-center p-4"
+            onClick={closeConfirm}
+          >
+            <motion.div
+              initial={{ scale: 0.96, y: 10, opacity: 0 }}
+              animate={{ scale: 1, y: 0, opacity: 1 }}
+              exit={{ scale: 0.98, y: 6, opacity: 0 }}
+              transition={{ type: "spring", stiffness: 260, damping: 22 }}
+              className="w-full max-w-sm rounded-2xl border border-gray-200 bg-white shadow-xl overflow-hidden"
+              onClick={(e) => e.stopPropagation()}
+              role="dialog"
+              aria-modal="true"
+            >
+              <div className={`px-5 py-3 ${GAZA_BG}`}>
+                <h3 className="text-sm font-bold">Confirmation</h3>
+              </div>
+              <div className="px-5 py-4">
+                <p className="text-sm text-gray-700">
+                  {confirmState.label || "Voulez-vous vraiment annuler ?"}
+                </p>
+              </div>
+              <div className="px-5 pb-5 pt-2 flex items-center justify-end gap-2">
+                <button
+                  onClick={closeConfirm}
+                  className="px-3 py-1.5 rounded-lg border border-gray-200 bg-white text-gray-700 hover:bg-gray-50 text-sm"
+                >
+                  Non
+                </button>
+                <button
+                  onClick={confirmCancel}
+                  className="px-3 py-1.5 rounded-lg bg-red-600 text-white hover:bg-red-700 text-sm inline-flex items-center gap-2"
+                >
+                  <Trash2 className="w-4 h-4" />
+                  Oui, annuler
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   );
 }
@@ -818,27 +1114,42 @@ function Section({ title, icon, color, children }: any) {
 
 function Card({ children }: any) {
   return (
-    <div className="p-5 rounded-2xl bg-white/60 backdrop-blur-sm md:backdrop-blur-md shadow-sm border border-gray-200 flex justify-between items-center hover:shadow-md transition-all contain-content">
+    <div className="p-4 sm:p-5 rounded-2xl bg-white/60 backdrop-blur-sm md:backdrop-blur-md shadow-sm border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:shadow-md transition-all contain-content">
       {children}
     </div>
   );
 }
 
-function StatCard({ title, value, hint, valueClass }: { title: string; value: string; hint?: string; valueClass?: string }) {
+function StatCard({
+  title,
+  value,
+  hint,
+  valueClass,
+  titleClass,
+}: {
+  title: string;
+  value: string;
+  hint?: string;
+  valueClass?: string;
+  titleClass?: string;
+}) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
-      <p className="text-xs text-slate-600">{title}</p>
+      <p className={`text-xs ${titleClass ?? "text-slate-600"}`}>{title}</p>
       <p className={`text-2xl font-extrabold mt-0.5 ${valueClass ?? "text-slate-900"}`}>{value}</p>
       {hint && <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p>}
     </div>
   );
 }
 
-
 function ActionButton({ text, color, onClick, loading }: any) {
   const colors = color === "green" ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600";
   return (
-    <button onClick={onClick} disabled={loading} className={`px-4 py-2 text-sm rounded-xl text-white ${colors} transition-all disabled:opacity-50`}>
+    <button
+      onClick={onClick}
+      disabled={loading}
+      className={`px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm rounded-xl text-white ${colors} transition-all disabled:opacity-50 w-full sm:w-auto`}
+    >
       {loading ? "..." : text}
     </button>
   );
@@ -857,7 +1168,17 @@ function InfoTile({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-/* Élément de ligne pour les demandes en attente (UI modernisée) */
+// Petit “pill” compact pour la section actifs
+function Pill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
+      <span className="text-[11px] text-gray-500">{label}</span>
+      <span className="text-[12px] font-semibold text-gray-900">{value}</span>
+    </div>
+  );
+}
+
+/* Élément de ligne pour les demandes en attente (thème cyan + mobile) */
 function PendingItem({
   title,
   metaLeft,
@@ -872,12 +1193,12 @@ function PendingItem({
   fromNow: (iso?: string) => string;
 }) {
   return (
-    <div className="group flex items-start justify-between gap-4 rounded-2xl border border-yellow-200 bg-yellow-50/50 hover:bg-yellow-50 transition-colors px-4 py-3 shadow-sm">
+    <div className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-cyan-200 bg-cyan-50/60 hover:bg-cyan-50 transition-colors px-3.5 py-3 sm:px-4 sm:py-3 shadow-sm">
       <div className="min-w-0">
         <p className="text-gray-900 font-medium truncate">{title}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {metaLeft.map((m, idx) => (
-            <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-white/70 border border-yellow-200 px-2 py-0.5 text-[11px] text-gray-700">
+            <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-white/70 border border-cyan-200 px-2 py-0.5 text-[11px] text-gray-700">
               <strong className="text-gray-900">{m.label}:</strong> {m.value}
             </span>
           ))}
@@ -888,7 +1209,8 @@ function PendingItem({
           )}
         </div>
       </div>
-      <div className="shrink-0">{right}</div>
+      {/* 👉 zone actions centrée */}
+      <div className="mt-2 sm:mt-0 sm:ml-auto shrink-0 flex gap-2 w-full sm:w-auto justify-center items-center">{right}</div>
     </div>
   );
 }
