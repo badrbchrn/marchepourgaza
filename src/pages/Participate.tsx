@@ -15,9 +15,9 @@ import {
   AlertTriangle,
   Search,
   Clock,
-  Trophy,
-  ChevronLeft,
-  ChevronRight,
+  LayoutGrid,
+  List,
+  ArrowUpDown,
 } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
@@ -375,11 +375,12 @@ export default function Participer() {
     []
   );
 
+  // ✅ Force 'numeric: "always"' pour éviter les libellés spéciaux (“l’année dernière”)
   const fromNow = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso).getTime();
     const diff = Date.now() - d;
-    const rtf = new Intl.RelativeTimeFormat("fr", { numeric: "auto" });
+    const rtf = new Intl.RelativeTimeFormat("fr", { numeric: "always" });
 
     const abs = Math.abs(diff);
     const sec = Math.floor(abs / 1000);
@@ -437,13 +438,8 @@ export default function Participer() {
     else if (pendingSentByMe.length > 0) setPendingTab("sent");
   }, [pendingForMeAsRunner.length, pendingSentByMe.length]);
 
+  // (on garde la ref si besoin ensuite, la logique de base reste intacte)
   const activeScrollerRef = useRef<HTMLDivElement | null>(null);
-  const scrollActive = useCallback((dir: "left" | "right") => {
-    const node = activeScrollerRef.current;
-    if (!node) return;
-    const delta = Math.round(node.clientWidth * 0.85) * (dir === "left" ? -1 : 1);
-    node.scrollBy({ left: delta, behavior: "smooth" });
-  }, []);
 
   if (loading) {
     return <div className="flex items-center justify-center h-screen text-gray-500 text-lg">Chargement...</div>;
@@ -624,44 +620,46 @@ export default function Participer() {
           </div>
         )}
 
+        {/* === SECTION EN ATTENTE — RAFFINÉE (ORANGE CLAIR) === */}
         {user && (
           <Section
             title={
               <span className="flex items-center gap-2">
                 <Info className="w-5 h-5" />
                 Demandes en attente
-                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-cyan-500/10 text-cyan-700 text-xs font-semibold px-2 py-0.5 border border-cyan-200">
+                <span className="ml-2 inline-flex items-center justify-center rounded-full bg-amber-500/10 text-amber-700 text-xs font-semibold px-2 py-0.5 border border-amber-200">
                   {pendingCount}
                 </span>
               </span>
             }
             icon={null}
-            color="from-cyan-600 via-sky-700 to-cyan-800"
+            color="from-amber-600 via-orange-700 to-amber-800"
           >
             {pendingCount === 0 ? (
               <EmptyState text="Aucune demande en attente" />
             ) : (
               <div className="space-y-5">
-                <div className="inline-flex items-center rounded-2xl border border-cyan-200 bg-cyan-50/60 p-1">
+                {/* Segmented control */}
+                <div className="inline-flex items-center rounded-2xl border border-amber-200 bg-amber-50/60 p-1">
                   <button
                     onClick={() => setPendingTab("to_me")}
                     className={`px-3.5 py-1.5 rounded-xl text-sm font-medium transition ${
-                      pendingTab === "to_me" ? "bg-white shadow text-cyan-900" : "text-cyan-700 hover:bg-white/70"
+                      pendingTab === "to_me" ? "bg-white shadow text-amber-900" : "text-amber-700 hover:bg-white/70"
                     }`}
                   >
                     À traiter
-                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-cyan-500/10 text-cyan-700 text-[11px] font-semibold px-1.5 py-0.5 border border-cyan-200">
+                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500/10 text-amber-700 text-[11px] font-semibold px-1.5 py-0.5 border border-amber-200">
                       {pendingForMeAsRunner.length}
                     </span>
                   </button>
                   <button
                     onClick={() => setPendingTab("sent")}
                     className={`px-3.5 py-1.5 rounded-xl text-sm font-medium transition ${
-                      pendingTab === "sent" ? "bg-white shadow text-cyan-900" : "text-cyan-700 hover:bg-white/70"
+                      pendingTab === "sent" ? "bg-white shadow text-amber-900" : "text-amber-700 hover:bg-white/70"
                     }`}
                   >
                     Envoyées
-                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-cyan-500/10 text-cyan-700 text-[11px] font-semibold px-1.5 py-0.5 border border-cyan-200">
+                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-amber-500/10 text-amber-700 text-[11px] font-semibold px-1.5 py-0.5 border border-amber-200">
                       {pendingSentByMe.length}
                     </span>
                   </button>
@@ -683,19 +681,21 @@ export default function Participer() {
                           ]}
                           metaTime={fromNow(s.created_at)}
                           rightActions={
-                            <div className="flex gap-2 w-full sm:w-auto justify-center items-center">
-                              <ActionButton
-                                text="Accepter"
-                                color="green"
+                            <div className="flex flex-col sm:flex-row gap-2 w-full sm:w-auto justify-center items-stretch sm:items-center">
+                              <button
                                 onClick={() => updateSponsorshipStatus(s.id, "accepted")}
-                                loading={processingId === s.id}
-                              />
-                              <ActionButton
-                                text="Refuser"
-                                color="red"
+                                disabled={processingId === s.id}
+                                className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-semibold disabled:opacity-50"
+                              >
+                                {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : "Accepter"}
+                              </button>
+                              <button
                                 onClick={() => updateSponsorshipStatus(s.id, "rejected")}
-                                loading={processingId === s.id}
-                              />
+                                disabled={processingId === s.id}
+                                className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 text-sm font-semibold disabled:opacity-50"
+                              >
+                                {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : "Refuser"}
+                              </button>
                             </div>
                           }
                         />
@@ -723,11 +723,15 @@ export default function Participer() {
                             <button
                               onClick={() => openConfirm(s.id, "Annuler la demande ?")}
                               disabled={processingId === s.id}
-                              className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50 w-10 h-10"
+                              className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-white text-red-600 hover:bg-red-50 border border-gray-200 text-sm font-semibold disabled:opacity-50"
                               title="Annuler la demande"
                               aria-label="Annuler la demande"
                             >
-                              {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                              {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                                <span className="inline-flex items-center gap-2">
+                                  <Trash2 className="w-4 h-4" /> Annuler
+                                </span>
+                              )}
                             </button>
                           }
                         />
@@ -740,84 +744,28 @@ export default function Participer() {
           </Section>
         )}
 
+        {/* === SECTION ACTIFS — VERT (nouvelle disposition raffinée) === */}
         {user && (
-          <Section title="Parrainages actifs" icon={<UserCheck className="w-5 h-5" />} color="from-[#007a3d] via-black to-[#ce1126]">
+          <Section title="Parrainages actifs" icon={<UserCheck className="w-5 h-5" />} color="from-emerald-700 via-emerald-800 to-teal-800">
             {myActive.length === 0 ? (
               <EmptyState text="Aucun parrainage actif" />
             ) : (
-              <div className="space-y-4">
-                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 justify-between">
-                  <div className="inline-flex items-center gap-2 text-sm">
-                    <span className="rounded-full border border-gray-200 bg-white/70 backdrop-blur px-2.5 py-1 text-gray-700">
-                      Liens actifs : <strong className="text-gray-900">{myActive.length}</strong>
-                    </span>
-                    <span className="rounded-full border border-gray-200 bg-white/70 backdrop-blur px-2.5 py-1 text-gray-700">
-                      Total potentiel : <strong className="text-gray-900">{formatCHF(myActiveTotal)}</strong>
-                    </span>
-                  </div>
-                  <div className="hidden sm:flex items-center gap-1">
-                    <button
-                      onClick={() => scrollActive("left")}
-                      className="h-9 w-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center"
-                      aria-label="Faire défiler vers la gauche"
-                    >
-                      <ChevronLeft className="w-5 h-5" />
-                    </button>
-                    <button
-                      onClick={() => scrollActive("right")}
-                      className="h-9 w-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center"
-                      aria-label="Faire défiler vers la droite"
-                    >
-                      <ChevronRight className="w-5 h-5" />
-                    </button>
-                  </div>
-                </div>
-
-                <div
-                  className="relative rounded-2xl border border-gray-200 bg-white/60 backdrop-blur p-2 sm:p-3 shadow-sm"
-                  role="region"
-                  aria-label="Parrainages actifs"
-                >
-                  <div
-                    ref={activeScrollerRef}
-                    className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent md:hidden"
-                  >
-                    {myActive.map((s) => (
-                      <ActiveCard
-                        key={s.id}
-                        s={s}
-                        userId={user?.id}
-                        GAZA_BG={GAZA_BG}
-                        GAZA_TEXT={GAZA_TEXT}
-                        formatCHF={formatCHF}
-                        fromNow={fromNow}
-                        openConfirm={openConfirm}
-                        processingId={processingId}
-                      />
-                    ))}
-                  </div>
-
-                  <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
-                    {myActive.map((s) => (
-                      <ActiveCard
-                        key={s.id}
-                        s={s}
-                        userId={user?.id}
-                        GAZA_BG={GAZA_BG}
-                        GAZA_TEXT={GAZA_TEXT}
-                        formatCHF={formatCHF}
-                        fromNow={fromNow}
-                        openConfirm={openConfirm}
-                        processingId={processingId}
-                      />
-                    ))}
-                  </div>
-                </div>
-              </div>
+              <ActiveSection
+                items={myActive}
+                userId={user.id}
+                totalPotential={myActiveTotal}
+                formatCHF={formatCHF}
+                fromNow={fromNow}
+                openConfirm={openConfirm}
+                processingId={processingId}
+                GAZA_BG={GAZA_BG}
+                GAZA_TEXT={GAZA_TEXT}
+              />
             )}
           </Section>
         )}
 
+        {/* === Profils à soutenir (inchangé côté logique) === */}
         <Section title="Profils à soutenir" icon={<Users className="w-5 h-5" />} color="from-blue-600 via-black to-green-600">
           <div className="mb-4 flex justify-end">
             <div className="relative w-full sm:w-80">
@@ -1140,41 +1088,11 @@ function StatCard({
   );
 }
 
-function ActionButton({ text, color, onClick, loading }: any) {
-  const colors = color === "green" ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600";
-  return (
-    <button
-      onClick={onClick}
-      disabled={loading}
-      className={`px-3 py-1.5 sm:px-4 sm:py-2 text-xs sm:text-sm rounded-xl text-white ${colors} transition-all disabled:opacity-50 w-full sm:w-auto`}
-    >
-      {loading ? "..." : text}
-    </button>
-  );
-}
-
 function EmptyState({ text }: any) {
   return <p className="text-gray-500 italic text-sm">{text}</p>;
 }
 
-function InfoTile({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg bg-white/70 border border-gray-200 px-3 py-2 text-sm">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="font-semibold text-gray-800">{children}</dd>
-    </div>
-  );
-}
-
-function Pill({ label, value }: { label: string; value: string }) {
-  return (
-    <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
-      <span className="text-[11px] text-gray-500">{label}</span>
-      <span className="text-[12px] font-semibold text-gray-900">{value}</span>
-    </div>
-  );
-}
-
+/* === Pending refined card (orange) === */
 function PendingCard({
   leftTitle,
   chips,
@@ -1187,16 +1105,17 @@ function PendingCard({
   rightActions?: React.ReactNode;
 }) {
   return (
-    <div className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-2xl border border-cyan-200 bg-white p-3 sm:p-4 shadow-sm">
-      <div className="min-w-0">
-        <p className="text-gray-900 font-medium truncate">{leftTitle}</p>
+    <div className="group relative flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-2xl border border-amber-200 bg-white p-3 sm:p-4 shadow-sm overflow-hidden">
+      <span className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500" aria-hidden />
+      <div className="min-w-0 pl-1">
+        <p className="text-gray-900 font-semibold leading-snug">{leftTitle}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
           {chips.map((m) => (
             <span
               key={m.k}
-              className="inline-flex items-center gap-1 rounded-full bg-cyan-50 border border-cyan-200 px-2.5 py-1 text-[11px] text-cyan-800"
+              className="inline-flex items-center gap-1 rounded-full bg-amber-50 border border-amber-200 px-2.5 py-1 text-[11px] text-amber-800"
             >
-              <strong className="text-cyan-900">{m.k}:</strong> {m.v}
+              <strong className="text-amber-900">{m.k}:</strong> {m.v}
             </span>
           ))}
           {metaTime && (
@@ -1211,69 +1130,351 @@ function PendingCard({
   );
 }
 
-function ActiveCard({
-  s,
+/* === Actifs — vert, layout pro (grid/table switch) === */
+function ActiveSection({
+  items,
   userId,
-  GAZA_BG,
-  GAZA_TEXT,
+  totalPotential,
   formatCHF,
   fromNow,
   openConfirm,
   processingId,
+  GAZA_BG,
+  GAZA_TEXT,
 }: {
-  s: any;
+  items: any[];
   userId: string;
-  GAZA_BG: string;
-  GAZA_TEXT: string;
+  totalPotential: number;
   formatCHF: (n: number) => string;
   fromNow: (iso?: string) => string;
   openConfirm: (id: string, label?: string) => void;
   processingId: string | null;
+  GAZA_BG: string;
+  GAZA_TEXT: string;
 }) {
-  const isRunner = s.runner?.id === userId;
-  const runner = s.runner;
-  const sponsor = s.sponsor;
-  const km = Number(runner?.expected_km) || 0;
-  const linePotential = (Number(s.pledge_per_km) || 0) * km;
+  const [query, setQuery] = useState("");
+  const [role, setRole] = useState<"all" | "as_runner" | "as_sponsor">("all");
+  const [sort, setSort] = useState<"recent" | "potential_desc" | "name_asc">("recent");
+  const [view, setView] = useState<"grid" | "table">("grid");
+
+  const rows = useMemo(() => {
+    return (items || []).map((s) => {
+      const km = Number(s.runner?.expected_km) || 0;
+      const pledge = Number(s.pledge_per_km) || 0;
+      const potential = km * pledge;
+      return {
+        id: s.id,
+        runnerName: s.runner?.full_name || "Marcheur inconnu",
+        sponsorName: s.sponsor?.full_name || "Parrain inconnu",
+        isRunner: s.runner?.id === userId,
+        city: s.runner?.city || "—",
+        km,
+        pledge,
+        potential,
+        createdAt: s.created_at as string | undefined,
+      };
+    });
+  }, [items, userId]);
+
+  const counts = useMemo(() => {
+    let asRunner = 0, asSponsor = 0;
+    for (const r of rows) r.isRunner ? asRunner++ : asSponsor++;
+    return { asRunner, asSponsor, all: rows.length };
+  }, [rows]);
+
+  const filteredSorted = useMemo(() => {
+    let out = rows;
+
+    if (role === "as_runner") out = out.filter((r) => r.isRunner);
+    else if (role === "as_sponsor") out = out.filter((r) => !r.isRunner);
+
+    if (query.trim()) {
+      const q = query.trim().toLowerCase();
+      out = out.filter((r) =>
+        (r.runnerName + " " + r.sponsorName + " " + r.city).toLowerCase().includes(q)
+      );
+    }
+
+    switch (sort) {
+      case "potential_desc":
+        out = [...out].sort((a, b) => b.potential - a.potential);
+        break;
+      case "name_asc":
+        out = [...out].sort((a, b) => a.runnerName.localeCompare(b.runnerName, "fr", { sensitivity: "base" }));
+        break;
+      default:
+        out = [...out].sort((a, b) => (new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));
+    }
+    return out;
+  }, [rows, role, query, sort]);
 
   return (
-    <article
-      className="shrink-0 snap-start min-w-[260px] sm:min-w-[320px] rounded-2xl border border-gray-200 bg-white/80 backdrop-blur-md p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
-      aria-label={`Parrainage de ${runner?.full_name || "marcheur"} ${isRunner ? "par" : "avec"} ${sponsor?.full_name || ""}`}
-    >
-      <header className="flex items-center gap-3">
+    <div className="space-y-4">
+      {/* Header stats + contrôles (vert) */}
+      <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
+        <div className="inline-flex flex-wrap items-center gap-2 text-sm">
+          <span className="rounded-full border border-emerald-200 bg-emerald-50/70 backdrop-blur px-2.5 py-1 text-emerald-800">
+            Liens actifs : <strong className="text-emerald-900">{counts.all}</strong>
+          </span>
+          <span className="rounded-full border border-emerald-200 bg-emerald-50/70 backdrop-blur px-2.5 py-1 text-emerald-800">
+            Total potentiel : <strong className="text-emerald-900">{formatCHF(totalPotential)}</strong>
+          </span>
+        </div>
+
+        <div className="flex flex-col sm:flex-row gap-3 sm:items-center w-full lg:w-auto">
+          {/* Segmented rôle */}
+          <div className="inline-flex rounded-2xl border border-emerald-200 bg-emerald-50/70 p-1">
+            <button
+              onClick={() => setRole("all")}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${role === "all" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"}`}
+            >
+              Tous <span className="ml-1 text-[11px] opacity-70">{counts.all}</span>
+            </button>
+            <button
+              onClick={() => setRole("as_runner")}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${role === "as_runner" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"}`}
+              title="Liens où vous êtes marcheur·euse"
+            >
+              Marcheur <span className="ml-1 text-[11px] opacity-70">{counts.asRunner}</span>
+            </button>
+            <button
+              onClick={() => setRole("as_sponsor")}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${role === "as_sponsor" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"}`}
+              title="Liens où vous êtes parrain"
+            >
+              Parrain <span className="ml-1 text-[11px] opacity-70">{counts.asSponsor}</span>
+            </button>
+          </div>
+
+          {/* Recherche */}
+          <div className="relative flex-1 min-w-[220px]">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+            <input
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder="Rechercher (nom, ville)…"
+              className="w-full rounded-xl border border-emerald-200 bg-white/80 pl-9 pr-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-emerald-200"
+            />
+          </div>
+
+          {/* Tri + vue */}
+          <div className="flex items-center gap-2">
+            <div className="relative">
+              <select
+                value={sort}
+                onChange={(e) => setSort(e.target.value as any)}
+                className="appearance-none pr-8 pl-3 py-2 text-sm rounded-xl border border-emerald-200 bg-white"
+                aria-label="Trier"
+              >
+                <option value="recent">Plus récent</option>
+                <option value="potential_desc">Potentiel décroissant</option>
+                <option value="name_asc">Nom (A→Z)</option>
+              </select>
+              <ArrowUpDown className="pointer-events-none absolute right-2 top-1/2 -translate-y-1/2 h-4 w-4 text-emerald-400" />
+            </div>
+
+            <div className="inline-flex rounded-xl border border-emerald-200 bg-white overflow-hidden">
+              <button
+                onClick={() => setView("grid")}
+                className={`px-2.5 py-2 ${view === "grid" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50"}`}
+                aria-label="Vue cartes"
+              >
+                <LayoutGrid className="w-4 h-4" />
+              </button>
+              <button
+                onClick={() => setView("table")}
+                className={`px-2.5 py-2 ${view === "table" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50"}`}
+                aria-label="Vue tableau"
+              >
+                <List className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Contenu */}
+      {filteredSorted.length === 0 ? (
+        <EmptyState text="Aucun parrainage ne correspond à ces critères." />
+      ) : view === "grid" ? (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+          {filteredSorted.map((r) => (
+            <ActiveItemCard
+              key={r.id}
+              row={r}
+              formatCHF={formatCHF}
+              fromNow={fromNow}
+              openConfirm={openConfirm}
+              processingId={processingId}
+              GAZA_BG={GAZA_BG}
+              GAZA_TEXT={GAZA_TEXT}
+            />
+          ))}
+        </div>
+      ) : (
+        <div className="overflow-x-auto rounded-2xl border border-emerald-200 bg-white">
+          <table className="min-w-[760px] w-full text-sm">
+            <thead className="bg-emerald-50 text-emerald-800">
+              <tr>
+                <th className="text-left font-semibold px-4 py-2">Marcheur</th>
+                <th className="text-left font-semibold px-4 py-2">Rôle</th>
+                <th className="text-left font-semibold px-4 py-2">Ville</th>
+                <th className="text-left font-semibold px-4 py-2">Objectif</th>
+                <th className="text-left font-semibold px-4 py-2">Contribution</th>
+                <th className="text-left font-semibold px-4 py-2">Potentiel</th>
+                <th className="text-left font-semibold px-4 py-2">Créé</th>
+                <th className="text-left font-semibold px-4 py-2">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-emerald-100">
+              {filteredSorted.map((r) => (
+                <tr key={r.id} className="hover:bg-emerald-50/60">
+                  <td className="px-4 py-2 font-medium text-gray-900">{r.runnerName}</td>
+                  <td className="px-4 py-2">
+                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.isRunner ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-teal-50 text-teal-700 border border-teal-200"}`}>
+                      {r.isRunner ? "Vous (marcheur)" : "Vous (parrain)"}
+                    </span>
+                  </td>
+                  <td className="px-4 py-2 text-gray-700">{r.city}</td>
+                  <td className="px-4 py-2 text-gray-700">{r.km} km</td>
+                  <td className="px-4 py-2 text-gray-700">{formatCHF(r.pledge)}/km</td>
+                  <td className="px-4 py-2 font-semibold">{formatCHF(r.potential)}</td>
+                  <td className="px-4 py-2 text-gray-500">{fromNow(r.createdAt)}</td>
+                  <td className="px-4 py-2">
+                    <button
+                      onClick={() => openConfirm(r.id, "Annuler ce parrainage ?")}
+                      className="inline-flex items-center justify-center px-3 py-2 rounded-lg bg-white text-red-600 hover:bg-red-50 border border-gray-200 text-sm font-semibold"
+                      aria-label="Annuler le parrainage"
+                      disabled={processingId === r.id}
+                    >
+                      {processingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                        <span className="inline-flex items-center gap-2">
+                          <Trash2 className="w-4 h-4" /> Annuler
+                        </span>
+                      )}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function ActiveItemCard({
+  row,
+  formatCHF,
+  fromNow,
+  openConfirm,
+  processingId,
+  GAZA_BG,
+  GAZA_TEXT,
+}: {
+  row: {
+    id: string;
+    runnerName: string;
+    sponsorName: string;
+    isRunner: boolean;
+    city: string;
+    km: number;
+    pledge: number;
+    potential: number;
+    createdAt?: string;
+  };
+  formatCHF: (n: number) => string;
+  fromNow: (iso?: string) => string;
+  openConfirm: (id: string, label?: string) => void;
+  processingId: string | null;
+  GAZA_BG: string;
+  GAZA_TEXT: string;
+}) {
+  return (
+    <article className="rounded-2xl border border-emerald-200 bg-white/80 backdrop-blur p-4 shadow-sm hover:shadow-md transition">
+      {/* Header : avatar + noms + rôle */}
+      <header className="flex items-start gap-3">
         <div className={`shrink-0 w-10 h-10 rounded-full ${GAZA_BG} flex items-center justify-center font-bold text-[11px]`}>
-          {String(runner?.full_name || "?").slice(0, 2).toUpperCase()}
+          {row.runnerName.slice(0, 2).toUpperCase()}
         </div>
         <div className="min-w-0">
-          <p className="font-semibold text-gray-900 truncate">{runner?.full_name || "Marcheur inconnu"}</p>
-          <p className={`text-[12px] leading-none font-semibold ${GAZA_TEXT}`}>
-            {isRunner ? `Parrain : ${sponsor?.full_name || "Inconnu"}` : `Vous parrainez ce marcheur`}
+          <p className="font-semibold text-gray-900 truncate">{row.runnerName}</p>
+          <p className={`text-[12px] leading-tight ${GAZA_TEXT}`}>
+            {row.isRunner ? `Parrain : ${row.sponsorName}` : `Vous parrainez ce marcheur`}
           </p>
+          <span className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${row.isRunner ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-teal-50 text-teal-700 border border-teal-200"}`}>
+            {row.isRunner ? "Vous (marcheur)" : "Vous (parrain)"}
+          </span>
         </div>
+
+        {/* Bouton action (subtil) */}
         <button
-          onClick={() => openConfirm(s.id, "Annuler ce parrainage ?")}
-          className="ml-auto p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50"
-          title="Annuler le parrainage"
+          onClick={() => openConfirm(row.id, "Annuler ce parrainage ?")}
+          className="ml-auto p-2 rounded-lg border border-emerald-100 bg-white text-red-600 hover:bg-red-50"
           aria-label="Annuler le parrainage"
-          disabled={processingId === s.id}
+          disabled={processingId === row.id}
         >
-          {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+          {processingId === row.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
         </button>
       </header>
 
+      {/* Body : infos + potentiel en avant */}
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
-        <Pill label="Ville" value={runner?.city || "—"} />
-        <Pill label="Objectif" value={`${km} km`} />
-        <Pill label="Contribution" value={`${formatCHF(Number(s.pledge_per_km) || 0)}/km`} />
-        <Pill label="Potentiel" value={formatCHF(linePotential)} />
+        <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
+          <span className="text-[11px] text-gray-500">Ville</span>
+          <span className="text-[12px] font-semibold text-gray-900">{row.city}</span>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
+          <span className="text-[11px] text-gray-500">Objectif</span>
+          <span className="text-[12px] font-semibold text-gray-900">{row.km} km</span>
+        </div>
+        <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
+          <span className="text-[11px] text-gray-500">Contribution</span>
+          <span className="text-[12px] font-semibold text-gray-900">{formatCHF(row.pledge)}/km</span>
+        </div>
+        <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 flex items-center justify-between">
+          <span className="text-[11px] text-emerald-700 font-medium">Potentiel</span>
+          <span className="text-[12px] font-bold text-emerald-900">{formatCHF(row.potential)}</span>
+        </div>
       </div>
 
-      <footer className="mt-2 text-[11px] text-gray-500 flex items-center gap-1">
-        <Clock className="w-3.5 h-3.5" />
-        <span>{fromNow(s.created_at)}</span>
+      {/* Footer : temps + lien annuler en texte */}
+      <footer className="mt-2 flex items-center justify-between text-[11px]">
+        <span className="inline-flex items-center gap-1 text-gray-500">
+          <Clock className="w-3.5 h-3.5" />
+          {fromNow(row.createdAt)}
+        </span>
+
+        <button
+          onClick={() => openConfirm(row.id, "Annuler ce parrainage ?")}
+          className="text-red-600 hover:text-red-700 font-medium"
+          disabled={processingId === row.id}
+        >
+          {processingId === row.id ? "..." : "Annuler"}
+        </button>
       </footer>
     </article>
+  );
+}
+
+/* (Optionnel/legacy) Composant d’info simple */
+function InfoTile({ label, children }: { label: string; children: React.ReactNode }) {
+  return (
+    <div className="rounded-lg bg-white/70 border border-gray-200 px-3 py-2 text-sm">
+      <dt className="text-gray-500">{label}</dt>
+      <dd className="font-semibold text-gray-800">{children}</dd>
+    </div>
+  );
+}
+
+/* (Optionnel/legacy) */
+function Pill({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
+      <span className="text-[11px] text-gray-500">{label}</span>
+      <span className="text-[12px] font-semibold text-gray-900">{value}</span>
+    </div>
   );
 }
 
@@ -1292,12 +1493,12 @@ function PendingItem({
   fromNow: (iso?: string) => string;
 }) {
   return (
-    <div className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-cyan-200 bg-cyan-50/60 hover:bg-cyan-50 transition-colors px-3.5 py-3 sm:px-4 sm:py-3 shadow-sm">
+    <div className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/60 hover:bg-amber-50 transition-colors px-3.5 py-3 sm:px-4 sm:py-3 shadow-sm">
       <div className="min-w-0">
         <p className="text-gray-900 font-medium truncate">{title}</p>
         <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
           {metaLeft.map((m, idx) => (
-            <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-white/70 border border-cyan-200 px-2 py-0.5 text-[11px] text-gray-700">
+            <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-white/70 border border-amber-200 px-2 py-0.5 text-[11px] text-gray-700">
               <strong className="text-gray-900">{m.label}:</strong> {m.value}
             </span>
           ))}
