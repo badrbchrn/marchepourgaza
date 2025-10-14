@@ -767,21 +767,7 @@ export default function Participer() {
 
         {/* === Profils à soutenir (inchangé côté logique) === */}
         <Section title="Profils à soutenir" icon={<Users className="w-5 h-5" />} color="from-blue-600 via-black to-green-600">
-          <div className="mb-4 flex justify-end">
-            <div className="relative w-full sm:w-80">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
-              <input
-                type="search"
-                inputMode="search"
-                value={nameQuery}
-                onChange={(e) => setNameQuery(e.target.value)}
-                placeholder="Rechercher par nom…"
-                aria-label="Rechercher un profil par nom"
-                className="w-full rounded-xl border border-gray-200 bg-white/80 pl-9 pr-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-                autoComplete="off"
-              />
-            </div>
-          </div>
+          
 
           <Suspense
             fallback={
@@ -928,7 +914,21 @@ export default function Participer() {
                         </div>
                       </>
                     )}
-
+                    <div className="mb-4 flex justify-end">
+                      <div className="relative w-full sm:w-80">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
+                        <input
+                          type="search"
+                          inputMode="search"
+                          value={nameQuery}
+                          onChange={(e) => setNameQuery(e.target.value)}
+                          placeholder="Rechercher par nom…"
+                          aria-label="Rechercher un profil par nom"
+                          className="w-full rounded-xl border border-gray-200 bg-white/80 pl-9 pr-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                          autoComplete="off"
+                        />
+                      </div>
+                    </div>
                     {remainingV.length > 0 && (
                       <>
                         <p className="text-xs text-gray-500 mb-2">Meilleur potentiel</p>

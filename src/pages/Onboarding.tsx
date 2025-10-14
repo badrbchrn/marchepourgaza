@@ -9,11 +9,12 @@ import {
   Coins,
   CheckCircle,
   XCircle,
-  Eye,
-  EyeOff,
-  Info,
   ShieldCheck,
   Sparkles,
+  Lock,
+  LockKeyhole,
+  Home,
+  ArrowBigRight,
 } from "lucide-react";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -33,6 +34,7 @@ export default function Onboarding() {
   const [expectedKm, setExpectedKm] = useState("");
   const [desiredPledge, setDesiredPledge] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
   const [hasProfile, setHasProfile] = useState(false);
@@ -46,9 +48,6 @@ export default function Onboarding() {
     setTimeout(() => setToast(null), 4000);
   };
 
-  const phoneRegex = /^\+?[0-9()\s.\-]{6,24}$/;
-  const cityRegex = /^[A-Za-zÀ-ÖØ-öø-ÿ' -]{2,50}$/;
-
   useEffect(() => {
     (async () => {
       try {
@@ -58,9 +57,7 @@ export default function Onboarding() {
           return;
         }
 
-        const isConfirmed = Boolean(
-          (user as any).email_confirmed_at || (user as any).confirmed_at
-        );
+        const isConfirmed = Boolean((user as any).email_confirmed_at || (user as any).confirmed_at);
         if (!isConfirmed) {
           showToast("error", "Veuillez confirmer votre e-mail avant de continuer.");
           await supabase.auth.signOut();
@@ -100,19 +97,28 @@ export default function Onboarding() {
   const readyForPublic = useMemo(() => {
     const hasContact = Boolean(fullName.trim() && city.trim() && phone.trim());
     if (!hasContact) return false;
-
     if (role === "sponsor") return true;
 
     const km = toNumber(expectedKm);
     const pledge = toNumber(desiredPledge);
     const kmOk = Number.isFinite(km) && km > 0 && km <= 180;
     const pledgeOk = hasActiveSponsorship ? true : (Number.isFinite(pledge) && pledge > 0);
-
     return kmOk && pledgeOk;
   }, [role, fullName, city, phone, expectedKm, desiredPledge, hasActiveSponsorship]);
 
   const handleSave = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    // Validation mot de passe toujours
+    if (!password || !confirmPassword) {
+      showToast("error", "Veuillez définir un mot de passe et le confirmer.");
+      return;
+    }
+    if (password !== confirmPassword) {
+      showToast("error", "Les mots de passe ne correspondent pas.");
+      return;
+    }
+
     setSaving(true);
     try {
       const { data: { user } } = await supabase.auth.getUser();
@@ -128,27 +134,21 @@ export default function Onboarding() {
         is_onboarded: readyForPublic,
       };
 
-      if (role === "runner") {
-        const expectedKmNumber = toNumber(expectedKm);
-        const desiredPledgeNumber = toNumber(desiredPledge);
-        const payload = {
-          ...base,
-          expected_km: expectedKmNumber,
-          ...(hasActiveSponsorship ? {} : { desired_pledge: desiredPledgeNumber }),
-        };
-        const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
-        if (error) throw error;
-      } else {
-        const { error } = await supabase
-          .from("profiles")
-          .upsert({ ...base, expected_km: 0, desired_pledge: 0 }, { onConflict: "id" });
-        if (error) throw error;
-      }
+      const payload =
+        role === "runner"
+          ? {
+              ...base,
+              expected_km: toNumber(expectedKm),
+              ...(hasActiveSponsorship ? {} : { desired_pledge: toNumber(desiredPledge) }),
+            }
+          : { ...base, expected_km: 0, desired_pledge: 0 };
 
-      if (!hasProfile && password.trim() !== "") {
-        const { error: pwdError } = await supabase.auth.updateUser({ password });
-        if (pwdError) throw pwdError;
-      }
+      const { error } = await supabase.from("profiles").upsert(payload, { onConflict: "id" });
+      if (error) throw error;
+
+      // Toujours mettre à jour le mot de passe
+      const { error: pwdError } = await supabase.auth.updateUser({ password });
+      if (pwdError) throw pwdError;
 
       showToast("success", "Profil enregistré avec succès !");
       setTimeout(() => navigate("/dashboard"), 1200);
@@ -169,112 +169,42 @@ export default function Onboarding() {
         className="w-full max-w-3xl backdrop-blur-xl bg-white/70 border border-gray-200 rounded-3xl shadow-xl p-8 md:p-10 space-y-6"
       >
         {/* Header */}
-        <div className="text-center space-y-3">
-          <div className="flex justify-center">
-            <ShieldCheck className="w-10 h-10 text-green-600" />
-          </div>
+        <div className="flex justify-between items-center mb-3">
           <h1 className="text-3xl font-extrabold text-gray-900">
             <span className="bg-gradient-to-r from-green-600 via-black to-red-600 bg-clip-text text-transparent">
               {hasProfile ? "Modifier votre profil" : "Compléter votre profil"}
             </span>
           </h1>
-          <p className="text-gray-500 text-sm">
-            Ces informations permettent de vous afficher publiquement et de faciliter le parrainage.
-          </p>
+          <motion.button
+            type="button"
+            whileTap={{ scale: 0.97 }}
+            onClick={() => navigate("/dashboard")}
+            className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold bg-gray-200 hover:bg-gray-300 text-gray-800"
+          >
+            <ArrowBigRight className="w-4 h-4" />
+          </motion.button>
         </div>
-
-        {/* Status */}
-        <div
-          className={`flex items-start gap-3 rounded-xl border p-3 text-sm ${
-            readyForPublic
-              ? "bg-green-50 border-green-200 text-green-800"
-              : "bg-yellow-50 border-yellow-200 text-yellow-800"
-          }`}
-        >
-          {readyForPublic ? <Eye className="w-4 h-4 mt-0.5" /> : <EyeOff className="w-4 h-4 mt-0.5" />}
-          <div>
-            <p className="font-semibold">
-              {readyForPublic ? "Profil public actif" : "Profil encore privé"}
-            </p>
-            {!readyForPublic && (
-              <ul className="list-disc ml-4 mt-1 space-y-0.5">
-                {!fullName.trim() && <li>Nom complet requis</li>}
-                {!city.trim() && <li>Ville requise</li>}
-                {!phone.trim() && <li>Téléphone requis</li>}
-              </ul>
-            )}
-          </div>
-        </div>
+        <p className="text-gray-500 text-sm text-center md:text-left mb-4">
+          Ces informations permettent de vous afficher publiquement et de faciliter le parrainage.
+        </p>
 
         {/* Form */}
         <div className="grid sm:grid-cols-2 gap-5">
-          <AnimatedInput
-            label="Nom complet"
-            icon={<User className="w-4 h-4 text-green-600" />}
-            value={fullName}
-            onChange={(e) => setFullName(e.target.value)}
-            required
-          />
-
-          <AnimatedSelect
-            label="Rôle"
-            value={role}
-            onChange={(e) => setRole(e.target.value as Role)}
-            options={[
-              { value: "runner", label: "Marcheur" },
-              { value: "sponsor", label: "Parrain" },
-            ]}
-          />
-
-          <AnimatedInput
-            label="Ville"
-            icon={<MapPin className="w-4 h-4 text-green-600" />}
-            value={city}
-            onChange={(e) => setCity(e.target.value)}
-            required
-          />
-
-          <AnimatedInput
-            label="Téléphone"
-            icon={<Phone className="w-4 h-4 text-green-600" />}
-            value={phone}
-            onChange={(e) => setPhone(e.target.value)}
-            placeholder="+41 76 123 45 67"
-            required
-          />
+          <AnimatedInput label="Nom complet" icon={<User className="w-4 h-4 text-green-600" />} value={fullName} onChange={(e) => setFullName(e.target.value)} required />
+          <AnimatedSelect label="Rôle" value={role} onChange={(e) => setRole(e.target.value as Role)} options={[{ value: "runner", label: "Marcheur" }, { value: "sponsor", label: "Parrain" }]} />
+          <AnimatedInput label="Ville" icon={<MapPin className="w-4 h-4 text-green-600" />} value={city} onChange={(e) => setCity(e.target.value)} required />
+          <AnimatedInput label="Téléphone" icon={<Phone className="w-4 h-4 text-green-600" />} value={phone} onChange={(e) => setPhone(e.target.value)} required />
 
           {role === "runner" && (
             <>
-              <AnimatedInput
-                label="Kilomètres prévus"
-                icon={<Target className="w-4 h-4 text-green-600" />}
-                value={expectedKm}
-                onChange={(e) => setExpectedKm(e.target.value)}
-                placeholder="Ex: 180"
-                required
-              />
-
-              <AnimatedInput
-                label="CHF / km souhaité"
-                icon={<Coins className="w-4 h-4 text-green-600" />}
-                value={desiredPledge}
-                onChange={(e) => setDesiredPledge(e.target.value)}
-                placeholder="Ex: 5"
-                required={!hasActiveSponsorship}
-                disabled={hasActiveSponsorship}
-              />
+              <AnimatedInput label="Kilomètres prévus" icon={<Target className="w-4 h-4 text-green-600" />} value={expectedKm} onChange={(e) => setExpectedKm(e.target.value)} placeholder="Ex: 180" required />
+              <AnimatedInput label="CHF / km souhaité" icon={<Coins className="w-4 h-4 text-green-600" />} value={desiredPledge} onChange={(e) => setDesiredPledge(e.target.value)} placeholder="Ex: 5" required={!hasActiveSponsorship} disabled={hasActiveSponsorship} />
             </>
           )}
 
-          {!hasProfile && (
-            <AnimatedInput
-              label="Mot de passe"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="sm:col-span-2"
-            />
-          )}
+          {/* Mot de passe toujours */}
+          <AnimatedInput label="Mot de passe" type="password" icon={<Lock className="w-4 h-4 text-green-600" />} value={password} onChange={(e) => setPassword(e.target.value)} required />
+          <AnimatedInput label="Confirmer le mot de passe" type="password" icon={<LockKeyhole className="w-4 h-4 text-green-600" />} value={confirmPassword} onChange={(e) => setConfirmPassword(e.target.value)} required />
         </div>
 
         {/* Submit */}
@@ -297,9 +227,7 @@ export default function Onboarding() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 30 }}
             className={`fixed bottom-6 right-6 px-5 py-3 rounded-2xl backdrop-blur-lg border border-white/20 shadow-2xl text-white text-sm font-medium z-[9999] ${
-              toast.type === "success"
-                ? "bg-green-600/90 ring-2 ring-green-400/50"
-                : "bg-red-600/90 ring-2 ring-red-400/50"
+              toast.type === "success" ? "bg-green-600/90" : "bg-red-600/90"
             }`}
           >
             <div className="flex items-center gap-2">
@@ -313,52 +241,24 @@ export default function Onboarding() {
   );
 }
 
-/* --- Input Animé --- */
-function AnimatedInput({
-  label,
-  icon,
-  className = "",
-  ...props
-}: React.InputHTMLAttributes<HTMLInputElement> & {
-  label: string;
-  icon: React.ReactNode;
-  className?: string;
-}) {
+/* Input animé */
+function AnimatedInput({ label, icon, className = "", ...props }: React.InputHTMLAttributes<HTMLInputElement> & { label: string; icon?: React.ReactNode; className?: string }) {
   return (
     <motion.div whileHover={{ scale: 1.01 }} transition={{ duration: 0.2 }} className={`relative ${className}`}>
-      <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">
-        {icon} {label}
-      </label>
-      <input
-        {...props}
-        className="w-full p-3 rounded-lg border border-gray-300 text-sm bg-white/70 focus:ring-2 focus:ring-green-600 focus:border-green-600 transition disabled:bg-gray-100 disabled:text-gray-500"
-      />
+      <label className="block text-xs font-medium text-gray-600 mb-1 flex items-center gap-1">{icon} {label}</label>
+      <input {...props} className="w-full p-3 rounded-lg border border-gray-300 text-sm bg-white/70 focus:ring-2 focus:ring-green-600 focus:border-green-600 transition disabled:bg-gray-100 disabled:text-gray-500" />
     </motion.div>
   );
 }
 
-/* --- Select --- */
-function AnimatedSelect({
-  label,
-  options,
-  className = "",
-  ...props
-}: React.SelectHTMLAttributes<HTMLSelectElement> & {
-  label: string;
-  options: Array<{ value: string; label: string }>;
-  className?: string;
-}) {
+/* Select animé */
+function AnimatedSelect({ label, options, className = "", ...props }: React.SelectHTMLAttributes<HTMLSelectElement> & { label: string; options: Array<{ value: string; label: string }>; className?: string }) {
   return (
     <motion.div whileHover={{ scale: 1.01 }} transition={{ duration: 0.2 }} className={className}>
       <label className="block text-xs font-medium text-gray-600 mb-1">{label}</label>
-      <select
-        {...props}
-        className="w-full p-3 rounded-lg border border-gray-300 text-sm bg-white/70 focus:ring-2 focus:ring-green-600 focus:border-green-600 transition"
-      >
+      <select {...props} className="w-full p-3 rounded-lg border border-gray-300 text-sm bg-white/70 focus:ring-2 focus:ring-green-600 focus:border-green-600 transition">
         {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
-          </option>
+          <option key={opt.value} value={opt.value}>{opt.label}</option>
         ))}
       </select>
     </motion.div>
