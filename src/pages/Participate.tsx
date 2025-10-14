@@ -23,6 +23,7 @@ export default function Participer() {
   const [user, setUser] = useState<any>(null);
   const [runners, setRunners] = useState<any[]>([]);
   const [sponsorships, setSponsorships] = useState<any[]>([]);
+  const [waitingCount, setWaitingCount] = useState(0); // 👈 nouveau
   const [loading, setLoading] = useState(true);
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
@@ -200,6 +201,13 @@ export default function Participer() {
           typeof r.desired_pledge === "number" && r.desired_pledge > 0;
         return isRunnerOk;
       });
+
+      // 👇 Calcul "en attente de parrain" (comme Home)
+      const allRunners = (profilesData || []).filter((r: any) => r.role === "runner" && !!r.full_name);
+      const accepted = (allSponsorships || []).filter((s: any) => s.status === "accepted");
+      const acceptedSet = new Set(accepted.map((s: any) => s?.runner?.id).filter(Boolean));
+      const waiting = allRunners.filter((r: any) => !acceptedSet.has(r.id));
+      startTransition(() => setWaitingCount(waiting.length));
 
       startTransition(() => {
         setRunners(filtered);
@@ -483,12 +491,24 @@ export default function Participer() {
           title={user?.role === "runner" ? "Votre potentiel (marcheur)" : "Potentiel global (marcheurs)"}
           value={chf(user?.role === "runner" ? myRunnerPotential : globalPotential)}
           hint={user?.role === "runner" ? "Somme de vos parrainages acceptés" : `${globalAcceptedCount} parrainages acceptés`}
+          valueClass={user?.role === "runner" ? undefined : "text-emerald-600"}  // 👈 vert léger sur le global
         />
-        <StatCard
-          title={user ? "Votre potentiel (parrain)" : "—"}
-          value={user ? chf(mySponsorPotential) : "—"}
-          hint={user ? "Somme de vos engagements acceptés" : "Connectez-vous pour voir"}
-        />
+
+
+        {user ? (
+          <StatCard
+            title="Votre potentiel (parrain)"
+            value={chf(mySponsorPotential)}
+            hint="Somme de vos engagements acceptés"
+          />
+        ) : (
+          <StatCard
+            title="En attente de parrain"
+            value={`${waitingCount}`}
+            hint="Marcheurs sans parrain"
+          />
+        )}
+
         <StatCard title="Parrainages acceptés" value={`${globalAcceptedCount}`} hint="Nombre total sur la plateforme" />
       </div>
 
@@ -829,15 +849,16 @@ function Card({ children }: any) {
   );
 }
 
-function StatCard({ title, value, hint }: { title: string; value: string; hint?: string }) {
+function StatCard({ title, value, hint, valueClass }: { title: string; value: string; hint?: string; valueClass?: string }) {
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <p className="text-xs text-slate-600">{title}</p>
-      <p className="text-2xl font-extrabold text-slate-900 mt-0.5">{value}</p>
+      <p className={`text-2xl font-extrabold mt-0.5 ${valueClass ?? "text-slate-900"}`}>{value}</p>
       {hint && <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p>}
     </div>
   );
 }
+
 
 function ActionButton({ text, color, onClick, loading }: any) {
   const colors = color === "green" ? "bg-green-600 hover:bg-green-700" : "bg-red-500 hover:bg-red-600";
