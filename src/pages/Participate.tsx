@@ -15,6 +15,9 @@ import {
   AlertTriangle,
   Search,
   Clock,
+  Trophy,
+  ChevronLeft,
+  ChevronRight,
 } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
@@ -27,22 +30,18 @@ export default function Participer() {
   const [toast, setToast] = useState<{ type: "success" | "error" | "info"; message: string } | null>(null);
   const [processingId, setProcessingId] = useState<string | null>(null);
 
-  // --- Confirm modal state ---
   const [confirmState, setConfirmState] = useState<{ id: string | null; open: boolean; label?: string }>({
     id: null,
     open: false,
     label: undefined,
   });
 
-  // --- Theming consts (palette Gaza) ---
   const GAZA_TEXT = "bg-clip-text text-transparent bg-[linear-gradient(90deg,#007a3d,#000,#ce1126)]";
   const GAZA_BG = "bg-[linear-gradient(90deg,#007a3d,#000,#ce1126)] text-white";
 
-  // Config
   const MAIN_RUNNER_ID = import.meta.env.VITE_LYAN_ID as string | undefined;
   const TOP_PARRAINS_LIMIT = 1;
 
-  // 🚀 Progressive rendering — dynamiques pour mobile / data-saver
   const computeChunk = () => {
     const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
     // @ts-ignore
@@ -54,7 +53,6 @@ export default function Participer() {
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
-  // 🔎 Recherche par nom
   const [nameQuery, setNameQuery] = useState("");
   const normalize = useCallback((s: string | undefined | null) => {
     if (!s) return "";
@@ -64,7 +62,6 @@ export default function Participer() {
     setVisibleCount(INITIAL_CHUNK);
   }, [nameQuery, INITIAL_CHUNK]);
 
-  // 🔕 Pas de polling agressif onglet caché
   const isTabVisibleRef = useRef<boolean>(typeof document !== "undefined" ? document.visibilityState === "visible" : true);
 
   const prefersReducedMotion = useReducedMotion();
@@ -79,7 +76,6 @@ export default function Participer() {
     !!p?.city && p.city.trim().length >= 2 &&
     !!p?.phone && p.phone.trim().length >= 6;
 
-  // --- Confirm helpers ---
   const openConfirm = (id: string, label?: string) => setConfirmState({ id, open: true, label });
   const closeConfirm = () => setConfirmState({ id: null, open: false, label: undefined });
   const confirmCancel = async () => {
@@ -227,7 +223,6 @@ export default function Participer() {
         return isRunnerOk;
       });
 
-      // 👇 Calcul "en attente de parrain"
       const allRunners = (profilesData || []).filter((r: any) => r.role === "runner" && !!r.full_name);
       const accepted = (allSponsorships || []).filter((s: any) => s.status === "accepted");
       const acceptedSet = new Set(accepted.map((s: any) => s?.runner?.id).filter(Boolean));
@@ -243,7 +238,6 @@ export default function Participer() {
     }
   }, []);
 
-  // Initial load + realtime + throttled polling
   useEffect(() => {
     fetchData();
 
@@ -266,7 +260,6 @@ export default function Participer() {
     };
   }, [fetchData]);
 
-  // Infinite-scroll sentinel
   useEffect(() => {
     if (!loadMoreRef.current) return;
     const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
@@ -332,7 +325,6 @@ export default function Participer() {
 
   const globalAcceptedCount = acceptedOnly.length;
 
-  // --- Grouping for "Profils à soutenir" (lyan / artistes / marcheurs leaderboard)
   const { mainProfile, artistsGroup, topGroup, remainingGroup } = useMemo(() => {
     const list = [...runners];
 
@@ -363,7 +355,6 @@ export default function Participer() {
     };
   }, [runners, sponsorsByRunner, potentialByRunner, MAIN_RUNNER_ID, TOP_PARRAINS_LIMIT]);
 
-  // 🔎 Filtre final par recherche (par groupe)
   const filteredGroups = useMemo(() => {
     if (!nameQuery) return { main: mainProfile, artists: artistsGroup, top: topGroup, remaining: remainingGroup };
     const q = normalize(nameQuery);
@@ -376,7 +367,6 @@ export default function Participer() {
     };
   }, [nameQuery, normalize, mainProfile, artistsGroup, topGroup, remainingGroup]);
 
-  // ---- Utils ----
   const chf = (n: number) =>
     new Intl.NumberFormat("fr-CH", { style: "currency", currency: "CHF", maximumFractionDigits: 2 }).format(n);
 
@@ -385,7 +375,6 @@ export default function Participer() {
     []
   );
 
-  // Correction fromNow
   const fromNow = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso).getTime();
@@ -412,7 +401,6 @@ export default function Participer() {
     return rtf.format(sign * year, "year");
   };
 
-  // ✅ Mémos avant tout return conditionnel
   const pendingForMeAsRunner = useMemo(
     () => sponsorships.filter((s) => s.status === "pending" && s.runner?.id === user?.id),
     [sponsorships, user?.id]
@@ -429,7 +417,6 @@ export default function Participer() {
   );
   const selfSponsorActive = !!selfSponsor;
 
-  // 👉 IMPORTANT : ces deux useMemo DOIVENT être avant tout return conditionnel
   const myActive = useMemo(
     () => sponsorships.filter((s) => s.status === "accepted" && (s.runner?.id === user?.id || s.sponsor?.id === user?.id)),
     [sponsorships, user?.id]
@@ -444,6 +431,20 @@ export default function Participer() {
     [myActive]
   );
 
+  const [pendingTab, setPendingTab] = useState<"to_me" | "sent">("to_me");
+  useEffect(() => {
+    if (pendingForMeAsRunner.length > 0) setPendingTab("to_me");
+    else if (pendingSentByMe.length > 0) setPendingTab("sent");
+  }, [pendingForMeAsRunner.length, pendingSentByMe.length]);
+
+  const activeScrollerRef = useRef<HTMLDivElement | null>(null);
+  const scrollActive = useCallback((dir: "left" | "right") => {
+    const node = activeScrollerRef.current;
+    if (!node) return;
+    const delta = Math.round(node.clientWidth * 0.85) * (dir === "left" ? -1 : 1);
+    node.scrollBy({ left: delta, behavior: "smooth" });
+  }, []);
+
   if (loading) {
     return <div className="flex items-center justify-center h-screen text-gray-500 text-lg">Chargement...</div>;
   }
@@ -455,7 +456,6 @@ export default function Participer() {
   const myRunnerPotential = user?.role === "runner" ? (potentialByRunner.get(user.id) || 0) : 0;
   const mySponsorPotential = user ? (potentialBySponsor.get(user.id) || 0) : 0;
 
-  // --- Helper pour répartir le visibleCount par groupe (garde l’infinite scroll)
   const computeVisibleByGroup = (groups: { main: any[]; artists: any[]; top: any[]; remaining: any[] }) => {
     let left = visibleCount;
     const take = (arr: any[]) => {
@@ -476,7 +476,6 @@ export default function Participer() {
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 px-3 md:px-6 py-10 md:py-16">
       {(isGuest || isIncomplete) && (
         <>
-          {/* Mini-bannière pill ultra-fine */}
           <motion.div
             className="fixed left-0 right-0 z-40 pointer-events-none top-[70px] sm:top-[82px]"
             initial={{ opacity: 0, y: -6 }}
@@ -515,7 +514,6 @@ export default function Participer() {
             </div>
           </motion.div>
 
-          {/* espace réduit (bannière plus fine) */}
           <div className="h-8 sm:h-10" />
         </>
       )}
@@ -562,7 +560,6 @@ export default function Participer() {
           />
         )}
 
-        {/* 👉 Titre + Valeur en couleurs Gaza */}
         <StatCard
           title="Parrainages acceptés"
           value={`${globalAcceptedCount}`}
@@ -627,7 +624,6 @@ export default function Participer() {
           </div>
         )}
 
-        {/* ---------------- Demandes en attente (UNIQUEMENT si connecté) ---------------- */}
         {user && (
           <Section
             title={
@@ -645,86 +641,98 @@ export default function Participer() {
             {pendingCount === 0 ? (
               <EmptyState text="Aucune demande en attente" />
             ) : (
-              <div className="space-y-6">
-                {pendingForMeAsRunner.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                      À traiter (vous êtes le/la marcheur·euse)
-                    </h3>
-                    <div className="grid gap-3">
-                      {pendingForMeAsRunner.map((s) => {
-                        const km = Number(s.runner?.expected_km) || 0;
-                        const pledge = Number(s.pledge_per_km) || 0;
-                        const potential = pledge * km;
-                        return (
-                          <PendingItem
-                            key={s.id}
-                            title={<span><strong>{s.sponsor?.full_name || "Parrain inconnu"}</strong> souhaite parrainer <strong>{s.runner?.full_name}</strong></span>}
-                            metaLeft={[
-                              { label: "Contribution", value: `${formatCHF(pledge)}/km` },
-                              { label: "Potentiel", value: formatCHF(potential) },
-                            ]}
-                            createdAt={s.created_at}
-                            right={
-                              <div className="flex gap-2 w-full sm:w-auto justify-center items-center">
-                                <ActionButton
-                                  text="Accepter"
-                                  color="green"
-                                  onClick={() => updateSponsorshipStatus(s.id, "accepted")}
-                                  loading={processingId === s.id}
-                                />
-                                <ActionButton
-                                  text="Refuser"
-                                  color="red"
-                                  onClick={() => updateSponsorshipStatus(s.id, "rejected")}
-                                  loading={processingId === s.id}
-                                />
-                              </div>
-                            }
-                            fromNow={fromNow}
-                          />
-                        );
-                      })}
-                    </div>
+              <div className="space-y-5">
+                <div className="inline-flex items-center rounded-2xl border border-cyan-200 bg-cyan-50/60 p-1">
+                  <button
+                    onClick={() => setPendingTab("to_me")}
+                    className={`px-3.5 py-1.5 rounded-xl text-sm font-medium transition ${
+                      pendingTab === "to_me" ? "bg-white shadow text-cyan-900" : "text-cyan-700 hover:bg-white/70"
+                    }`}
+                  >
+                    À traiter
+                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-cyan-500/10 text-cyan-700 text-[11px] font-semibold px-1.5 py-0.5 border border-cyan-200">
+                      {pendingForMeAsRunner.length}
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => setPendingTab("sent")}
+                    className={`px-3.5 py-1.5 rounded-xl text-sm font-medium transition ${
+                      pendingTab === "sent" ? "bg-white shadow text-cyan-900" : "text-cyan-700 hover:bg-white/70"
+                    }`}
+                  >
+                    Envoyées
+                    <span className="ml-1.5 inline-flex items-center justify-center rounded-full bg-cyan-500/10 text-cyan-700 text-[11px] font-semibold px-1.5 py-0.5 border border-cyan-200">
+                      {pendingSentByMe.length}
+                    </span>
+                  </button>
+                </div>
+
+                {pendingTab === "to_me" && (
+                  <div className="grid gap-3">
+                    {pendingForMeAsRunner.map((s) => {
+                      const km = Number(s.runner?.expected_km) || 0;
+                      const pledge = Number(s.pledge_per_km) || 0;
+                      const potential = pledge * km;
+                      return (
+                        <PendingCard
+                          key={s.id}
+                          leftTitle={`${s.sponsor?.full_name || "Parrain inconnu"} souhaite parrainer ${s.runner?.full_name || ""}`}
+                          chips={[
+                            { k: "Contribution", v: `${formatCHF(pledge)}/km` },
+                            { k: "Potentiel", v: formatCHF(potential) },
+                          ]}
+                          metaTime={fromNow(s.created_at)}
+                          rightActions={
+                            <div className="flex gap-2 w-full sm:w-auto justify-center items-center">
+                              <ActionButton
+                                text="Accepter"
+                                color="green"
+                                onClick={() => updateSponsorshipStatus(s.id, "accepted")}
+                                loading={processingId === s.id}
+                              />
+                              <ActionButton
+                                text="Refuser"
+                                color="red"
+                                onClick={() => updateSponsorshipStatus(s.id, "rejected")}
+                                loading={processingId === s.id}
+                              />
+                            </div>
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 )}
 
-                {pendingSentByMe.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3 flex items-center gap-2">
-                      Envoyées (en attente du/de la marcheur·euse)
-                    </h3>
-                    <div className="grid gap-3">
-                      {pendingSentByMe.map((s) => {
-                        const km = Number(s.runner?.expected_km) || 0;
-                        const pledge = Number(s.pledge_per_km) || 0;
-                        const potential = pledge * km;
-                        return (
-                          <PendingItem
-                            key={s.id}
-                            title={<span>Vous souhaitez parrainer <strong>{s.runner?.full_name}</strong></span>}
-                            metaLeft={[
-                              { label: "Contribution", value: `${formatCHF(pledge)}/km` },
-                              { label: "Potentiel", value: formatCHF(potential) },
-                            ]}
-                            createdAt={s.created_at}
-                            right={
-                              // 👉 poubelle centrée + pop-up de confirmation
-                              <button
-                                onClick={() => openConfirm(s.id, "Annuler la demande ?")}
-                                disabled={processingId === s.id}
-                                className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50 w-10 h-10"
-                                title="Annuler la demande"
-                                aria-label="Annuler la demande"
-                              >
-                                {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                              </button>
-                            }
-                            fromNow={fromNow}
-                          />
-                        );
-                      })}
-                    </div>
+                {pendingTab === "sent" && (
+                  <div className="grid gap-3">
+                    {pendingSentByMe.map((s) => {
+                      const km = Number(s.runner?.expected_km) || 0;
+                      const pledge = Number(s.pledge_per_km) || 0;
+                      const potential = pledge * km;
+                      return (
+                        <PendingCard
+                          key={s.id}
+                          leftTitle={`Vous souhaitez parrainer ${s.runner?.full_name || ""}`}
+                          chips={[
+                            { k: "Contribution", v: `${formatCHF(pledge)}/km` },
+                            { k: "Potentiel", v: formatCHF(potential) },
+                          ]}
+                          metaTime={fromNow(s.created_at)}
+                          rightActions={
+                            <button
+                              onClick={() => openConfirm(s.id, "Annuler la demande ?")}
+                              disabled={processingId === s.id}
+                              className="inline-flex items-center justify-center p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50 w-10 h-10"
+                              title="Annuler la demande"
+                              aria-label="Annuler la demande"
+                            >
+                              {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                            </button>
+                          }
+                        />
+                      );
+                    })}
                   </div>
                 )}
               </div>
@@ -732,78 +740,77 @@ export default function Participer() {
           </Section>
         )}
 
-        {/* ---------------- Parrainages actifs (UNE grande section horizontale) ---------------- */}
         {user && (
           <Section title="Parrainages actifs" icon={<UserCheck className="w-5 h-5" />} color="from-[#007a3d] via-black to-[#ce1126]">
             {myActive.length === 0 ? (
               <EmptyState text="Aucun parrainage actif" />
             ) : (
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
+              <div className="space-y-4">
+                <div className="flex flex-col sm:flex-row sm:items-center gap-2 sm:gap-3 justify-between">
                   <div className="inline-flex items-center gap-2 text-sm">
                     <span className="rounded-full border border-gray-200 bg-white/70 backdrop-blur px-2.5 py-1 text-gray-700">
-                      Liens actifs&nbsp;: <strong className="text-gray-900">{myActive.length}</strong>
+                      Liens actifs : <strong className="text-gray-900">{myActive.length}</strong>
                     </span>
                     <span className="rounded-full border border-gray-200 bg-white/70 backdrop-blur px-2.5 py-1 text-gray-700">
-                      Total potentiel&nbsp;: <strong className="text-gray-900">{formatCHF(myActiveTotal)}</strong>
+                      Total potentiel : <strong className="text-gray-900">{formatCHF(myActiveTotal)}</strong>
                     </span>
+                  </div>
+                  <div className="hidden sm:flex items-center gap-1">
+                    <button
+                      onClick={() => scrollActive("left")}
+                      className="h-9 w-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center"
+                      aria-label="Faire défiler vers la gauche"
+                    >
+                      <ChevronLeft className="w-5 h-5" />
+                    </button>
+                    <button
+                      onClick={() => scrollActive("right")}
+                      className="h-9 w-9 rounded-lg border border-gray-200 bg-white hover:bg-gray-50 flex items-center justify-center"
+                      aria-label="Faire défiler vers la droite"
+                    >
+                      <ChevronRight className="w-5 h-5" />
+                    </button>
                   </div>
                 </div>
 
                 <div
                   className="relative rounded-2xl border border-gray-200 bg-white/60 backdrop-blur p-2 sm:p-3 shadow-sm"
                   role="region"
-                  aria-label="Carrousel des parrainages actifs"
+                  aria-label="Parrainages actifs"
                 >
-                  <div className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent">
-                    {myActive.map((s) => {
-                      const isRunner = s.runner?.id === user?.id;
-                      const runner = s.runner;
-                      const sponsor = s.sponsor;
-                      const km = Number(runner?.expected_km) || 0;
-                      const linePotential = (Number(s.pledge_per_km) || 0) * km;
+                  <div
+                    ref={activeScrollerRef}
+                    className="flex gap-3 sm:gap-4 overflow-x-auto snap-x snap-mandatory scrollbar-thin scrollbar-thumb-gray-300 scrollbar-track-transparent md:hidden"
+                  >
+                    {myActive.map((s) => (
+                      <ActiveCard
+                        key={s.id}
+                        s={s}
+                        userId={user?.id}
+                        GAZA_BG={GAZA_BG}
+                        GAZA_TEXT={GAZA_TEXT}
+                        formatCHF={formatCHF}
+                        fromNow={fromNow}
+                        openConfirm={openConfirm}
+                        processingId={processingId}
+                      />
+                    ))}
+                  </div>
 
-                      return (
-                        <article
-                          key={s.id}
-                          className="shrink-0 snap-start min-w-[260px] sm:min-w-[320px] rounded-2xl border border-gray-200 bg-white/80 backdrop-blur-md p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
-                          aria-label={`Parrainage de ${runner?.full_name || "marcheur"} ${isRunner ? "par" : "avec"} ${sponsor?.full_name || ""}`}
-                        >
-                          <header className="flex items-center gap-3">
-                            <div className={`shrink-0 w-10 h-10 rounded-full ${GAZA_BG} flex items-center justify-center font-bold text-[11px]`}>
-                              {String(runner?.full_name || "?").slice(0, 2).toUpperCase()}
-                            </div>
-                            <div className="min-w-0">
-                              <p className="font-semibold text-gray-900 truncate">{runner?.full_name || "Marcheur inconnu"}</p>
-                              <p className={`text-[12px] leading-none font-semibold ${GAZA_TEXT}`}>
-                                {isRunner ? `Parrain : ${sponsor?.full_name || "Inconnu"}` : `Vous parrainez ce marcheur`}
-                              </p>
-                            </div>
-                            <button
-                              onClick={() => openConfirm(s.id, "Annuler ce parrainage ?")}
-                              disabled={processingId === s.id}
-                              className="ml-auto p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50"
-                              title="Annuler le parrainage"
-                              aria-label="Annuler le parrainage"
-                            >
-                              {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
-                            </button>
-                          </header>
-
-                          <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
-                            <Pill label="Ville" value={runner?.city || "—"} />
-                            <Pill label="Objectif" value={`${km} km`} />
-                            <Pill label="Contribution" value={`${formatCHF(Number(s.pledge_per_km) || 0)}/km`} />
-                            <Pill label="Potentiel" value={formatCHF(linePotential)} />
-                          </div>
-
-                          <footer className="mt-2 text-[11px] text-gray-500 flex items-center gap-1">
-                            <Clock className="w-3.5 h-3.5" />
-                            <span>{fromNow(s.created_at)}</span>
-                          </footer>
-                        </article>
-                      );
-                    })}
+                  <div className="hidden md:grid md:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
+                    {myActive.map((s) => (
+                      <ActiveCard
+                        key={s.id}
+                        s={s}
+                        userId={user?.id}
+                        GAZA_BG={GAZA_BG}
+                        GAZA_TEXT={GAZA_TEXT}
+                        formatCHF={formatCHF}
+                        fromNow={fromNow}
+                        openConfirm={openConfirm}
+                        processingId={processingId}
+                      />
+                    ))}
                   </div>
                 </div>
               </div>
@@ -811,9 +818,7 @@ export default function Participer() {
           </Section>
         )}
 
-        {/* ---------------- Profils à soutenir (3 sous-sections) ---------------- */}
         <Section title="Profils à soutenir" icon={<Users className="w-5 h-5" />} color="from-blue-600 via-black to-green-600">
-          {/* Barre de recherche */}
           <div className="mb-4 flex justify-end">
             <div className="relative w-full sm:w-80">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
@@ -843,10 +848,8 @@ export default function Participer() {
               <EmptyState text="Aucun profil ne correspond à votre recherche." />
             ) : (
               <div className="space-y-8">
-                {/* 1) Lyan */}
                 {mainV.length > 0 && (
                   <div>
-                    
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
                       {mainV.map((runner: any) => {
                         const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
@@ -887,7 +890,6 @@ export default function Participer() {
                   </div>
                 )}
 
-                {/* 2) Artistes */}
                 {artistsV.length > 0 && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Artistes</h3>
@@ -931,7 +933,6 @@ export default function Participer() {
                   </div>
                 )}
 
-                {/* 3) Marcheurs (leaderboard) */}
                 {(topV.length > 0 || remainingV.length > 0) && (
                   <div>
                     <h3 className="text-sm font-semibold text-gray-700 mb-3">Marcheurs</h3>
@@ -1028,7 +1029,6 @@ export default function Participer() {
             )}
           </Suspense>
 
-          {/* Sentinel pour charger plus */}
           {allCount > 0 && (mainV.length + artistsV.length + topV.length + remainingV.length) < allCount && (
             <div ref={loadMoreRef} className="mt-4 flex justify-center">
               <button
@@ -1042,7 +1042,6 @@ export default function Participer() {
         </Section>
       </div>
 
-      {/* 👉 Modal de confirmation */}
       <AnimatePresence>
         {confirmState.open && (
           <motion.div
@@ -1093,7 +1092,6 @@ export default function Participer() {
   );
 }
 
-/* --- Reusable Components --- */
 function Section({ title, icon, color, children }: any) {
   const prefersReducedMotion = useReducedMotion();
   return (
@@ -1168,7 +1166,6 @@ function InfoTile({ label, children }: { label: string; children: React.ReactNod
   );
 }
 
-// Petit “pill” compact pour la section actifs
 function Pill({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
@@ -1178,7 +1175,109 @@ function Pill({ label, value }: { label: string; value: string }) {
   );
 }
 
-/* Élément de ligne pour les demandes en attente (thème cyan + mobile) */
+function PendingCard({
+  leftTitle,
+  chips,
+  metaTime,
+  rightActions,
+}: {
+  leftTitle: string;
+  chips: Array<{ k: string; v: string }>;
+  metaTime?: string;
+  rightActions?: React.ReactNode;
+}) {
+  return (
+    <div className="group flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-2xl border border-cyan-200 bg-white p-3 sm:p-4 shadow-sm">
+      <div className="min-w-0">
+        <p className="text-gray-900 font-medium truncate">{leftTitle}</p>
+        <div className="mt-2 flex flex-wrap items-center gap-2">
+          {chips.map((m) => (
+            <span
+              key={m.k}
+              className="inline-flex items-center gap-1 rounded-full bg-cyan-50 border border-cyan-200 px-2.5 py-1 text-[11px] text-cyan-800"
+            >
+              <strong className="text-cyan-900">{m.k}:</strong> {m.v}
+            </span>
+          ))}
+          {metaTime && (
+            <span className="inline-flex items-center gap-1 text-gray-500 text-[11px]">
+              <Clock className="w-3.5 h-3.5" /> {metaTime}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="sm:ml-auto shrink-0 flex gap-2 w-full sm:w-auto justify-center items-center">{rightActions}</div>
+    </div>
+  );
+}
+
+function ActiveCard({
+  s,
+  userId,
+  GAZA_BG,
+  GAZA_TEXT,
+  formatCHF,
+  fromNow,
+  openConfirm,
+  processingId,
+}: {
+  s: any;
+  userId: string;
+  GAZA_BG: string;
+  GAZA_TEXT: string;
+  formatCHF: (n: number) => string;
+  fromNow: (iso?: string) => string;
+  openConfirm: (id: string, label?: string) => void;
+  processingId: string | null;
+}) {
+  const isRunner = s.runner?.id === userId;
+  const runner = s.runner;
+  const sponsor = s.sponsor;
+  const km = Number(runner?.expected_km) || 0;
+  const linePotential = (Number(s.pledge_per_km) || 0) * km;
+
+  return (
+    <article
+      className="shrink-0 snap-start min-w-[260px] sm:min-w-[320px] rounded-2xl border border-gray-200 bg-white/80 backdrop-blur-md p-3 sm:p-4 shadow-sm hover:shadow-md transition-shadow"
+      aria-label={`Parrainage de ${runner?.full_name || "marcheur"} ${isRunner ? "par" : "avec"} ${sponsor?.full_name || ""}`}
+    >
+      <header className="flex items-center gap-3">
+        <div className={`shrink-0 w-10 h-10 rounded-full ${GAZA_BG} flex items-center justify-center font-bold text-[11px]`}>
+          {String(runner?.full_name || "?").slice(0, 2).toUpperCase()}
+        </div>
+        <div className="min-w-0">
+          <p className="font-semibold text-gray-900 truncate">{runner?.full_name || "Marcheur inconnu"}</p>
+          <p className={`text-[12px] leading-none font-semibold ${GAZA_TEXT}`}>
+            {isRunner ? `Parrain : ${sponsor?.full_name || "Inconnu"}` : `Vous parrainez ce marcheur`}
+          </p>
+        </div>
+        <button
+          onClick={() => openConfirm(s.id, "Annuler ce parrainage ?")}
+          className="ml-auto p-2 rounded-lg border border-gray-200 bg-white text-red-600 hover:bg-red-50 disabled:opacity-50"
+          title="Annuler le parrainage"
+          aria-label="Annuler le parrainage"
+          disabled={processingId === s.id}
+        >
+          {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+        </button>
+      </header>
+
+      <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
+        <Pill label="Ville" value={runner?.city || "—"} />
+        <Pill label="Objectif" value={`${km} km`} />
+        <Pill label="Contribution" value={`${formatCHF(Number(s.pledge_per_km) || 0)}/km`} />
+        <Pill label="Potentiel" value={formatCHF(linePotential)} />
+      </div>
+
+      <footer className="mt-2 text-[11px] text-gray-500 flex items-center gap-1">
+        <Clock className="w-3.5 h-3.5" />
+        <span>{fromNow(s.created_at)}</span>
+      </footer>
+    </article>
+  );
+}
+
+/* Élément de ligne legacy utilisé ailleurs si nécessaire */
 function PendingItem({
   title,
   metaLeft,
@@ -1209,7 +1308,6 @@ function PendingItem({
           )}
         </div>
       </div>
-      {/* 👉 zone actions centrée */}
       <div className="mt-2 sm:mt-0 sm:ml-auto shrink-0 flex gap-2 w-full sm:w-auto justify-center items-center">{right}</div>
     </div>
   );
