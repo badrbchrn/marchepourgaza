@@ -412,60 +412,35 @@ export default function Participer() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 px-3 md:px-6 py-10 md:py-16">
       {(isGuest || isIncomplete) && (
-        <>
-          {/* Bannière fixe sous l'AppShell */}
-          <motion.div
-            className="fixed left-0 right-0 z-50 pointer-events-none top-[72px] sm:top-[84px]"
-            initial={{ opacity: 0, y: -6 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: prefersReducedMotion ? 0 : 0.22 }}
-            role="alert"
-            aria-live="polite"
-          >
-            <div className="mx-auto w-full max-w-[min(92vw,48rem)] px-3 pointer-events-auto">
-              <div className="flex flex-wrap items-center gap-2 sm:gap-3 rounded-xl bg-white/65 md:bg-white/70 text-red-700 ring-1 ring-red-200/70 backdrop-blur-sm md:backdrop-blur-md shadow-sm px-3 py-2">
-                <div className="flex items-start sm:items-center gap-2 sm:gap-3 min-w-0 flex-1">
-                  <AlertTriangle className="h-4 w-4 shrink-0 text-red-600" />
-                  <p className="text-sm sm:text-[15px] font-medium leading-snug whitespace-normal break-words">
-                    {isGuest
-                      ? "Vous n’êtes pas connecté. Connectez-vous pour parrainer un profil."
-                      : "Votre profil est incomplet. Complétez-le pour parrainer un profil."}
-                  </p>
-                </div>
-
-                {isGuest ? (
-                  <div className="flex items-center gap-2">
-                    <a
-                      href="/login"
-                      className="hidden sm:inline-flex items-center justify-center rounded-lg px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-red-50/50 transition"
-                    >
-                      Se connecter
-                    </a>
-                    
-                    <a
-                      href="/signup"
-                      className="inline-flex items-center justify-center rounded-lg border border-red-200/70 bg-white/90 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-white transition"
-                    >
-                      Créer un compte
-                    </a>
-                    
-                  </div>
-                ) : (
-                  <a
-                    href="/onboarding"
-                    className="inline-flex items-center justify-center rounded-lg border border-red-200/70 bg-white/85 px-3 py-1.5 text-sm font-semibold text-red-700 hover:bg-white transition"
-                  >
-                    Compléter mon profil
-                  </a>
-                )}
+      <>
+        {/* Mini-bannière pill ultra-fine */}
+        <motion.div
+          className="fixed left-0 right-0 z-40 pointer-events-none top-[70px] sm:top-[82px]"
+          initial={{ opacity: 0, y: -6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: prefersReducedMotion ? 0 : 0.22 }}
+          role="alert"
+          aria-live="polite"
+        >
+          <div className="mx-auto px-3">
+            <div className="pointer-events-auto mx-auto w-fit max-w-[92vw]">
+              <div className="inline-flex items-center gap-2 rounded-full bg-white/80 text-red-700 ring-1 ring-red-200/70 shadow-sm px-2.5 py-1">
+                <AlertTriangle className="h-3.5 w-3.5 shrink-0 text-red-600" />
+                <p className="text-[12px] sm:text-[13px] font-medium leading-none whitespace-normal">
+                  {isGuest
+                    ? <>Vous n’êtes pas connecté. <a href="/login" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">Se connecter</a> <span className="text-red-300 mx-1">•</span> <a href="/signup" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">Créer un compte</a></>
+                    : <>Votre profil est incomplet. <a href="/onboarding" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">Compléter mon profil</a></>}
+                </p>
               </div>
             </div>
-          </motion.div>
+          </div>
+        </motion.div>
 
-          {/* Espace pour éviter le chevauchement */}
-          <div className="h-12 sm:h-14" />
-        </>
-      )}
+        {/* espace réduit (bannière plus fine) */}
+        <div className="h-8 sm:h-10" />
+      </>
+    )}
+
 
       <motion.div
         className="text-center mb-6 md:mb-8"
