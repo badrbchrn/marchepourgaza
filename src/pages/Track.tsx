@@ -216,9 +216,16 @@ export default function Marche() {
             <MapContainer
               center={[46.3, 6.55]}
               zoom={9}
-              scrollWheelZoom={true}
-              className="absolute inset-0 rounded-2xl overflow-hidden shadow"
+              dragging={false}
+              zoomControl={false}
+              scrollWheelZoom={false}
+              doubleClickZoom={false}
+              touchZoom={false}
+              keyboard={false}
+              attributionControl={false}
+              className="absolute inset-0 rounded-2xl overflow-hidden shadow select-none pointer-events-none"
             >
+
 
               <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
 
@@ -292,21 +299,23 @@ export default function Marche() {
         </p>
       </motion.section>
 
+      
       {/* ÉTAPES */}
       <motion.section className="mx-auto max-w-7xl px-6 pb-20 pt-12" {...fadeUp(0.08)}>
-        <h3 className="text-center text-2xl md:text-3xl font-extrabold mb-2">
+        <h3 className="text-center text-2xl md:text-3xl font-extrabold mb-3">
           Étapes et heures de passage
         </h3>
 
-        {/* Indication de slide */}
-        <div className="flex items-center justify-center gap-2 text-gray-500 mb-3 text-sm">
+        {/* Indication de défilement */}
+        <div className="flex items-center justify-center gap-2 text-gray-600 mb-4 text-sm">
           <motion.span
-            animate={{ x: [0, 8, 0] }}
+            animate={{ x: [0, 10, 0] }}
             transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
+            className="flex items-center"
           >
             <svg
               xmlns="http://www.w3.org/2000/svg"
-              className="w-4 h-4 text-gray-400"
+              className="w-5 h-5 text-gray-500"
               fill="none"
               viewBox="0 0 24 24"
               stroke="currentColor"
@@ -315,19 +324,21 @@ export default function Marche() {
               <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
             </svg>
           </motion.span>
-          <span>Faites glisser ou utilisez la molette pour explorer les étapes</span>
+          <span className="font-medium text-gray-700">
+            Faites défiler horizontalement pour explorer les étapes
+          </span>
         </div>
 
-        {/* TIMELINE défilable */}
+        {/* TIMELINE défilable horizontalement */}
         <div
-          className="relative mt-6 flex overflow-x-auto no-scrollbar space-x-5 py-6 cursor-grab"
+          className="relative mt-6 flex overflow-x-auto space-x-5 py-6 px-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 cursor-grab"
           onWheel={(e) => {
-            // Si la souris est au-dessus de la section, on bloque le scroll vertical
-            e.preventDefault();
-            e.stopPropagation();
-
-            // Et on défile horizontalement à la place
-            e.currentTarget.scrollLeft += e.deltaY;
+            // autorise uniquement le défilement horizontal
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
+              e.currentTarget.scrollLeft += e.deltaX;
+            } else {
+              e.stopPropagation(); // empêche le scroll vertical d'agir ici
+            }
           }}
           onMouseDown={(e) => e.currentTarget.classList.add("grabbing")}
           onMouseUp={(e) => e.currentTarget.classList.remove("grabbing")}
@@ -339,7 +350,7 @@ export default function Marche() {
           {ETAPES.map((e, i) => (
             <motion.div
               key={i}
-              className="w-[220px] md:w-[250px] flex-shrink-0 rounded-2xl border border-gray-200 bg-white p-4 text-center shadow-sm hover:shadow-md transition-all"
+              className="w-[220px] md:w-[250px] flex-shrink-0 rounded-2xl border border-gray-200 bg-white p-4 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.12, delay: i * 0.02 }}
@@ -357,8 +368,8 @@ export default function Marche() {
             </motion.div>
           ))}
         </div>
-
       </motion.section>
+
 
 
       {/* CTA – raffiné */}

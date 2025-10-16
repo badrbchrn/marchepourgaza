@@ -233,16 +233,19 @@ export default function Home() {
               </span>
             </Link>
 
-            {/* S'inscrire (raffiné, pas de fond rouge) */}
-            <Link
-              to="/signup"
-              className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm md:text-base font-semibold
-                         text-rose-700 ring-1 ring-rose-200 shadow-sm hover:bg-rose-50 hover:ring-rose-300 transition"
-            >
-              <UserPlus className="h-4 w-4" />
-              S’inscrire
-            </Link>
+            {/* S'inscrire → seulement si pas connecté */}
+            {!isLoggedIn && (
+              <Link
+                to="/signup"
+                className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-3 text-sm md:text-base font-semibold
+                          text-rose-700 ring-1 ring-rose-200 shadow-sm hover:bg-rose-50 hover:ring-rose-300 transition"
+              >
+                <UserPlus className="h-4 w-4" />
+                S’inscrire
+              </Link>
+            )}
           </div>
+
         </motion.div>
 
         {/* Vidéo téléphone */}

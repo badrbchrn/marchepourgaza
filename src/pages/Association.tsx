@@ -230,15 +230,6 @@ export default function Association() {
                 <ExternalLink className="h-3.5 w-3.5 opacity-80" />
                 Visiter le site de Yaffa
               </a>
-              <a
-                href="https://pay.raisenow.io/msgxh?lng=fr"
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-gradient-to-r from-green-700 via-black to-red-700 px-5 py-2.5 text-sm font-semibold text-white shadow hover:brightness-110"
-              >
-                <HeartHandshake className="h-4 w-4" />
-                Faire un don
-              </a>
             </div>
           </div>
 
