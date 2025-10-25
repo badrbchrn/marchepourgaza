@@ -12,10 +12,35 @@ import {
   Bell,
   UserPlus,
   LogIn,
+  X,
+  Radio,
 } from "lucide-react";
 import { motion } from "framer-motion";
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
+
+/* ---------------- Config / Helpers pop-up ---------------- */
+// URL de la page “live” (à adapter si besoin)
+const LIVE_URL = "/track";
+
+// Optionnel : restreindre à une plage de dates précises (YYYY-MM-DD)
+// Laisser à null pour activer tous les week-ends.
+const EVENT_START: string | null = null; // ex: "2025-10-25"
+const EVENT_END: string | null = null;   // ex: "2025-10-26"
+
+function isWeekend(now = new Date()): boolean {
+  // 0 = dimanche, 6 = samedi
+  const dow = now.getDay();
+  return dow === 6 || dow === 0;
+}
+function inEventRange(now = new Date()): boolean {
+  if (!EVENT_START || !EVENT_END) return true; // pas de borne => actif tous les week-ends
+  const y = now.getFullYear();
+  const m = String(now.getMonth() + 1).padStart(2, "0");
+  const d = String(now.getDate()).padStart(2, "0");
+  const today = `${y}-${m}-${d}`;
+  return today >= EVENT_START && today <= EVENT_END;
+}
 
 /* ---------------- Animations ---------------- */
 const fadeUp = {
@@ -42,6 +67,9 @@ export default function Home() {
   const [totalFunds, setTotalFunds] = useState<number | null>(null);
   const [pendingMine, setPendingMine] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+
+  // ---- État : pop-up live du week-end (chaque refresh)
+  const [showLivePopup, setShowLivePopup] = useState(false);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -113,6 +141,21 @@ export default function Home() {
     fetchData();
   }, []);
 
+  // ---- Affichage pop-up à CHAQUE refresh du week-end (ou ?live=1)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const forced = params.get("live") === "1";
+    if (forced || (isWeekend() && inEventRange())) {
+      setShowLivePopup(true);
+    } else {
+      setShowLivePopup(false);
+    }
+  }, []);
+
+  const closePopup = useCallback(() => {
+    setShowLivePopup(false);
+  }, []);
+
   return (
     <div className="flex flex-col min-h-screen bg-white">
       {/* ---------------- HERO ---------------- */}
@@ -180,7 +223,6 @@ export default function Home() {
                       Créer mon compte
                     </span>
                   </span>
-                  
                 </div>
               </Link>
             </motion.div>
@@ -245,7 +287,6 @@ export default function Home() {
               </Link>
             )}
           </div>
-
         </motion.div>
 
         {/* Vidéo téléphone */}
@@ -422,7 +463,7 @@ export default function Home() {
             La carte de suivi en direct sera disponible <strong>le jour de la marche</strong>. Suivez le parcours et les participants.
           </p>
 
-        <div className="mt-1.5 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
+          <div className="mt-1.5 rounded-3xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 shadow-sm">
             <div className="rounded-3xl bg-gradient-to-br from-green-50 via-white to-red-50 border border-gray-200/70 shadow-inner p-9 flex flex-col items-center justify-center space-y-3.5">
               <CheckCircle className="w-10 h-10 text-green-600" />
               <p className="text-base font-semibold text-gray-800">Bientôt disponible — Suivez-nous pour le départ</p>
@@ -443,6 +484,9 @@ export default function Home() {
           </div>
         </div>
       </motion.section>
+
+      {/* --------- POP-UP “Marche en cours” (week-end, chaque refresh) --------- */}
+      {showLivePopup && <LiveWeekendPopup onClose={closePopup} />}
     </div>
   );
 }
@@ -500,4 +544,80 @@ function SectionDivider({ color }: { color: "gaza" | "gray" }) {
     return <div className="h-[2px] w-full bg-gradient-to-r from-red-600 via-black to-green-600 opacity-85" />;
   }
   return <div className="h-px w-full bg-gray-200" />;
+}
+
+/* ---------------- Pop-up component ---------------- */
+function LiveWeekendPopup({ onClose }: { onClose: () => void }) {
+  // Échappe avec la touche Échap
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") onClose();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[999] flex items-center justify-center p-4"
+      role="dialog"
+      aria-modal="true"
+      aria-labelledby="live-title"
+      onClick={onClose}
+    >
+      {/* Overlay */}
+      <div className="absolute inset-0 bg-black/50 backdrop-blur-[2px]" />
+
+      {/* Card */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.98, y: 8 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        transition={{ duration: 0.2 }}
+        className="relative w-full max-w-md rounded-3xl overflow-hidden shadow-2xl ring-1 ring-black/5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="h-1.5 w-full bg-gradient-to-r from-red-600 via-black to-green-600" />
+        <div className="bg-white p-5 sm:p-6">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex items-center gap-2">
+              <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-green-600 via-black to-red-600 grid place-items-center">
+                <Radio className="h-5 w-5 text-white" />
+              </div>
+              <h3 id="live-title" className="text-lg font-extrabold text-gray-900">
+                Marche en cours — Suivi en direct
+              </h3>
+            </div>
+            <button
+              onClick={onClose}
+              aria-label="Fermer"
+              className="rounded-xl p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition"
+            >
+              <X className="h-5 w-5" />
+            </button>
+          </div>
+
+          <p className="mt-3 text-sm text-gray-700 leading-snug">
+            Le live est activé pour le week-end. Suivez la progression des marcheurs en temps réel.
+          </p>
+
+          <div className="mt-4 flex flex-col sm:flex-row gap-2.5">
+            <Link
+              to={LIVE_URL}
+              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-700 via-black to-red-700 px-4 py-2.5 text-sm font-semibold text-white shadow hover:brightness-110"
+              onClick={onClose}
+            >
+              Voir le suivi en direct
+              <ArrowRight className="h-4 w-4 opacity-90" />
+            </Link>
+            <button
+              onClick={onClose}
+              className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50"
+            >
+              Plus tard
+            </button>
+          </div>
+        </div>
+      </motion.div>
+    </div>
+  );
 }
