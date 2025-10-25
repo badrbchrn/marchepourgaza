@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">
+  <!-- Home -->
+  <url>
+    <loc>https://www.marchepourgaza.ch/</loc>
+    <changefreq>daily</changefreq>
+    <priority>1.0</priority>
+  </url>
+
+  <!-- Routes de l'app (React Router) -->
+  <url><loc>https://www.marchepourgaza.ch/participer</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/media</loc><changefreq>weekly</changefreq><priority>0.6</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/track</loc><changefreq>daily</changefreq><priority>0.7</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/dashboard</loc><changefreq>daily</changefreq><priority>0.8</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/login</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/onboarding</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/signup</loc><changefreq>monthly</changefreq><priority>0.4</priority></url>
+  <url><loc>https://www.marchepourgaza.ch/association</loc><changefreq>weekly</changefreq><priority>0.5</priority></url>
+</urlset>
