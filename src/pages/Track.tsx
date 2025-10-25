@@ -48,8 +48,8 @@ const DIST_DB_WRITE_M     = 50;    // écriture DB
 const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
 
 /* IMPORTANT: break long jumps so we don't draw a straight line over big gaps */
-const GAP_BREAK_M = 30000; // si 2 points consécutifs sont distants de > 200 m, on coupe le trait
-
+const GAP_BREAK_M = 30000; // si 2 points consécutifs sont distants de > 30 km, on coupe le trait (tu avais mis cette valeur)
+ 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
   { ville: "Genève (Bains-des-Pâquis)", km: "0 km", heure: "07h00 (sam.)" },
@@ -471,14 +471,13 @@ export default function Marche() {
       const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
       setProfiles(profilesData || []);
 
-      const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(); // 12h
+      // IMPORTANT: plus de filtre temporel — on récupère TOUT l'historique et on ordonne
       const { data: recents } = await supabase
         .from("locations")
         .select("user_id, lat, lng, is_active, updated_at, accuracy, created_at")
-        .gte("updated_at", since)
         .order("updated_at", { ascending: true });
 
-      // --- rebuild trails FROM SCRATCH (as you had) + filter (0,0) rows ---
+      // rebuild trails FROM SCRATCH + filtre (0,0)
       const grouped: Record<string, [number, number][]> = {};
       for (const row of (recents || [])) {
         if (row.lat === 0 && row.lng === 0) continue; // ignore bad row
