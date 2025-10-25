@@ -38,7 +38,7 @@ const liveIsOnNow = () => {
 };
 //VITE_LYAN_ID
 /* ======================== ENV / ADMIN ======================== */
-const ADMIN_ID = ((import.meta as any).env?.VITE_LYAN_ID as string | undefined)?.trim();
+const ADMIN_ID = ((import.meta as any).env?.VITE_ADMIN_USER_ID as string | undefined)?.trim();
 const ADMIN_LABEL = "Lyan";
 
 /* ======================== DISTANCES / INTERVALS (PROD) ======================== */
@@ -586,18 +586,20 @@ export default function Marche() {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-green-600 via-black to-red-600 text-white shadow">
                 <Navigation className="h-6 w-6" />
               </div>
-              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
-                Marche autour du <span className="text-red-700">Léman</span>
+              {/* Title optimized for phones: clamp + line-balance + explicit mobile break */}
+              <h1 className="text-balance leading-tight tracking-tight font-extrabold text-[clamp(22px,6.2vw,40px)] text-slate-900">
+                <span className="sm:inline block">Marche autour du</span>{" "}
+                <span className="text-red-700">Léman</span>
               </h1>
-              <p className="mt-3 text-slate-600">
-                Rejoignez Lyan dans sa marche à tous moment à l'aide de sa position en temps réel !
+              <p className="mt-3 text-[clamp(13px,3.8vw,16px)] text-slate-600 leading-relaxed">
+                Rejoignez Lyan dans sa marche à tout moment grâce à sa position en temps réel&nbsp;!
               </p>
-              <div className="mt-5 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ring-1 ring-slate-300 bg-white/80 backdrop-blur">
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[clamp(11px,3.4vw,14px)] font-medium ring-1 ring-slate-300 bg-white/80 backdrop-blur">
                 <span className={`inline-block h-2 w-2 rounded-full ${liveNow ? "bg-green-600 animate-pulse" : "bg-red-500"}`} />
                 {liveNow ? (
                   <span>Suivi en direct — activé</span>
                 ) : (
-                  <span>Suivi en direct inactif — activation à 06h00 (heure Suisse)</span>
+                  <span className="text-balance">Suivi inactif — activation à 06h00 (heure Suisse)</span>
                 )}
               </div>
             </div>
@@ -608,10 +610,12 @@ export default function Marche() {
       {/* MAP */}
       <motion.section className="mx-auto max-w-7xl px-2 sm:px-4 relative z-0" style={{ zIndex: 0 }} {...fadeUp(0.05)}>
         <div className="flex items-center justify-between px-2 sm:px-1">
-          <h2 className="mb-4 text-center sm:text-left text-2xl font-extrabold text-slate-900">Le parcours</h2>
+          <h2 className="mb-4 text-center sm:text-left font-extrabold text-[clamp(18px,5.5vw,28px)] text-slate-900 leading-tight">
+            Le parcours
+          </h2>
           <button
             onClick={() => setFullscreen(true)}
-            className="inline-flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-sm font-semibold text-slate-900 border border-slate-200 ring-1 ring-black/10 shadow hover:shadow-md"
+            className="inline-flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-[clamp(12px,3.6vw,14px)] font-semibold text-slate-900 border border-slate-200 ring-1 ring-black/10 shadow hover:shadow-md"
             aria-label="Agrandir la carte"
           >
             <Maximize2 className="h-4 w-4" />
@@ -621,9 +625,9 @@ export default function Marche() {
 
         <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-zinc-50 shadow">
           <div className="absolute left-4 top-4 z-[20] pointer-events-none">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-sm font-medium ring-1 ring-slate-300">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[clamp(11px,3.4vw,13px)] font-medium ring-1 ring-slate-300">
               <MapPinned className="h-4 w-4 text-green-700" />
-              <span>Carte live — {activeCount} marcheur(s) en partage</span>
+              <span className="text-balance">Carte live — {activeCount} marcheur(s) en partage</span>
             </span>
           </div>
 
@@ -640,14 +644,14 @@ export default function Marche() {
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-green-700 via-black to-red-700" />
         </div>
 
-        <p className="mx-auto mt-3 max-w-3xl text-center text-sm text-slate-600 px-3">
+        <p className="mx-auto mt-3 max-w-3xl text-center text-[clamp(12px,3.6vw,14px)] text-slate-600 px-3 leading-relaxed">
           Une marche symbolique de solidarité, reliant les rives suisses et françaises du Léman, au profit des familles de Gaza.
         </p>
       </motion.section>
 
       {/* ÉTAPES */}
       <motion.section className="mx-auto max-w-7xl px-4 sm:px-6 pb-20 pt-10" {...fadeUp(0.08)}>
-        <h3 className="text-center text-2xl md:text-3xl font-extrabold mb-3 text-slate-900">
+        <h3 className="text-center font-extrabold mb-3 text-slate-900 leading-tight text-[clamp(18px,5.8vw,30px)]">
           Étapes et heures de passage
         </h3>
         <div
@@ -664,7 +668,7 @@ export default function Marche() {
           {ETAPES.map((e, i) => (
             <motion.div
               key={i}
-              className="w-[220px] md:w-[250px] flex-shrink-0 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+              className="w-[200px] sm:w-[240px] flex-shrink-0 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.12, delay: i * 0.02 }}
@@ -673,11 +677,13 @@ export default function Marche() {
               <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-green-700 via-black to-red-700 text-white text-sm font-semibold shadow">
                 {i + 1}
               </div>
-              <p className="font-semibold text-slate-900 text-sm md:text-base">{e.ville}</p>
-              <p className="mt-1 text-xs text-slate-500">{e.km}</p>
+              <p className="font-semibold text-slate-900 text-[clamp(12px,4.2vw,16px)] leading-snug text-balance">
+                {e.ville}
+              </p>
+              <p className="mt-1 text-[clamp(11px,3.6vw,13px)] text-slate-500">{e.km}</p>
               <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-red-700 ring-1 ring-red-100">
                 <Clock className="h-4 w-4" />
-                <span className="text-sm font-medium">{e.heure}</span>
+                <span className="text-[clamp(12px,3.8vw,14px)] font-medium">{e.heure}</span>
               </div>
             </motion.div>
           ))}
@@ -690,14 +696,14 @@ export default function Marche() {
           <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200">
             <Flag className="h-5 w-5 text-green-700" />
           </div>
-          <p className="mx-auto max-w-2xl text-slate-700">
+          <p className="mx-auto max-w-2xl text-slate-700 text-[clamp(13px,3.8vw,16px)] leading-relaxed">
             Rejoignez l’élan, soutenez et encouragez les marcheurs pendant l’évènement.
           </p>
           <a
             href="/participer"
             className="group mt-5 inline-flex rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
           >
-            <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 ring-1 ring-black/5 shadow-sm group-hover:shadow-md">
+            <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-[clamp(12px,3.6vw,14px)] font-semibold text-slate-900 ring-1 ring-black/5 shadow-sm group-hover:shadow-md">
               <Heart className="h-4 w-4 text-emerald-600" />
               Participer
             </span>
@@ -716,7 +722,7 @@ export default function Marche() {
                 onClick={startSharing}
                 className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 p-[2px] shadow-2xl hover:brightness-105"
               >
-                <span className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-900 ring-1 ring-black/5">
+                <span className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-[clamp(12px,3.6vw,14px)] font-semibold text-slate-900 ring-1 ring-black/5">
                   <Share2 className="h-5 w-5 text-emerald-600" />
                   Partager ma localisation
                 </span>
@@ -724,7 +730,7 @@ export default function Marche() {
             ) : (
               <button
                 onClick={stopSharing}
-                className="inline-flex items-center gap-2 rounded-full bg-red-600 px-5 py-3 text-sm font-semibold text-white shadow-2xl hover:bg-red-700"
+                className="inline-flex items-center gap-2 rounded-full bg-red-600 px-5 py-3 text-[clamp(12px,3.6vw,14px)] font-semibold text-white shadow-2xl hover:bg-red-700"
               >
                 <StopCircle className="h-5 w-5" />
                 Arrêter le partage
@@ -741,7 +747,7 @@ export default function Marche() {
             <div className="relative h-[calc(100dvh-1.25rem)] sm:h-[calc(100dvh-2.5rem)] rounded-2xl ring-1 ring-white/10 bg-gradient-to-b from-zinc-100/60 to-slate-200/60 overflow-hidden">
               <button
                 onClick={() => setFullscreen(false)}
-                className="absolute right-3 top-3 z-[1010] inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-900 border border-slate-300 ring-1 ring-black/10 shadow hover:shadow-md"
+                className="absolute right-3 top-3 z-[1010] inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-[clamp(12px,3.6vw,14px)] font-semibold text-slate-900 border border-slate-300 ring-1 ring-black/10 shadow hover:shadow-md"
               >
                 <X className="h-4 w-4" />
                 Fermer
