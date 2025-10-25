@@ -36,7 +36,7 @@ const liveIsOnNow = () => {
   s.setHours(6, 0, 0, 0); // 06:00
   return n >= s;
 };
-//VITE_LYAN_ID
+
 /* ======================== ENV / ADMIN ======================== */
 const ADMIN_ID = ((import.meta as any).env?.VITE_LYAN_ID as string | undefined)?.trim();
 const ADMIN_LABEL = "Lyan";
@@ -46,6 +46,9 @@ const DIST_TRAIL_APPEND_M = 20;   // adoucir le trait visuel
 const DIST_BROADCAST_M    = 50;   // diffusion realtime
 const DIST_DB_WRITE_M     = 50;   // écriture DB
 const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
+
+/* IMPORTANT: break long jumps so we don't draw a straight line over big gaps */
+const GAP_BREAK_M = 2000; // if two consecutive points are > 300 m apart, start a new segment
 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
@@ -172,6 +175,32 @@ const haversine = (a: [number, number], b: [number, number]) => {
   return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
 };
 
+/* Split a sequence of points into small segments when the gap is big */
+function splitIntoSegments(
+  points: [number, number][],
+  gapMeters: number
+): [number, number][][] {
+  const segs: [number, number][][] = [];
+  if (!points.length) return segs;
+
+  let current: [number, number][] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const prev = current[current.length - 1];
+    const p = points[i];
+    const d = haversine(prev, p);
+    if (d > gapMeters) {
+      // close current if it has at least 2 points
+      if (current.length > 1) segs.push(current);
+      // start a fresh segment from this point
+      current = [p];
+    } else {
+      current.push(p);
+    }
+  }
+  if (current.length > 1) segs.push(current);
+  return segs;
+}
+
 /* ======================== Focus (TOP-CENTER) ======================== */
 function FocusLyanButton({ lyanPos }: { lyanPos: [number, number] | null }) {
   const map = useMap();
@@ -271,21 +300,21 @@ function LiveMap({
           updateWhenIdle
         />
 
-        {Object.entries(trails).map(([uid, points]) =>
-          points.length > 1 ? (
-            <Polyline
-              key={`trail-${uid}`}
-              positions={points}
-              pathOptions={{
-                color: uid === ADMIN_ID ? "#10B981" : "#94A3B8",
-                weight: uid === ADMIN_ID ? 6 : 4,
-                opacity: uid === ADMIN_ID ? 0.95 : 0.55,
-                lineCap: "round",
-                lineJoin: "round",
-              }}
-            />
-          ) : null
-        )}
+        {/* Draw trails but break them on large gaps */}
+        {Object.entries(trails).map(([uid, points]) => {
+          const segments = splitIntoSegments(points, GAP_BREAK_M);
+          const isAdmin = uid === ADMIN_ID;
+          const opts = {
+            color: isAdmin ? "#10B981" : "#94A3B8",
+            weight: isAdmin ? 6 : 4,
+            opacity: isAdmin ? 0.95 : 0.55,
+            lineCap: "round" as const,
+            lineJoin: "round" as const,
+          };
+          return segments.map((seg, i) => (
+            <Polyline key={`trail-${uid}-${i}`} positions={seg} pathOptions={opts} />
+          ));
+        })}
 
         {locations.map((l) => {
           const profile = profiles.find((p) => p.id === l.user_id);
