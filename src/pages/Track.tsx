@@ -38,7 +38,7 @@ const liveIsOnNow = () => {
 };
 //VITE_LYAN_ID
 /* ======================== ENV / ADMIN ======================== */
-const ADMIN_ID = ((import.meta as any).env?.VITE_ADMIN_USER_ID as string | undefined)?.trim();
+const ADMIN_ID = ((import.meta as any).env?.VITE_LYAN_ID as string | undefined)?.trim();
 const ADMIN_LABEL = "Lyan";
 
 /* ======================== DISTANCES / INTERVALS (PROD) ======================== */
