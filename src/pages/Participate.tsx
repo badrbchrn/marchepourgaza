@@ -1,7 +1,15 @@
-import { useEffect, useMemo, useState, useRef, useCallback, startTransition, lazy, Suspense } from "react";
+import {
+  useEffect,
+  useMemo,
+  useState,
+  useRef,
+  useCallback,
+  startTransition,
+  lazy,
+  Suspense,
+} from "react";
 import { supabase } from "@/lib/supabaseClient";
-const RunnerCard = lazy(() => import("@/components/RunnerCard"));
-
+import ErrorBoundary from "@/components/ErrorBoundary";
 import {
   Sparkles,
   CheckCircle,
@@ -21,6 +29,36 @@ import {
 } from "lucide-react";
 import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 
+/* ---------- Lazy import robuste ---------- */
+function lazyWithRetry<T extends React.ComponentType<any>>(factory: () => Promise<{ default: T }>) {
+  let retried = false;
+  return lazy(async () => {
+    try {
+      return await factory();
+    } catch (err) {
+      // Offline -> attendre le retour en ligne puis retenter
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        await new Promise<void>((resolve) => {
+          const onOnline = () => {
+            window.removeEventListener("online", onOnline);
+            resolve();
+          };
+          window.addEventListener("online", onOnline);
+        });
+        return factory();
+      }
+      // Petit hic dev server -> une seconde tentative
+      if (!retried) {
+        retried = true;
+        return factory();
+      }
+      throw err;
+    }
+  });
+}
+const RunnerCard = lazyWithRetry(() => import("@/components/RunnerCard"));
+
+/* ==================== Page ==================== */
 export default function Participer() {
   const [user, setUser] = useState<any>(null);
   const [runners, setRunners] = useState<any[]>([]);
@@ -42,8 +80,12 @@ export default function Participer() {
   const MAIN_RUNNER_ID = import.meta.env.VITE_LYAN_ID as string | undefined;
   const TOP_PARRAINS_LIMIT = 1;
 
+  /* ---------- Chunk / pagination principale ---------- */
   const computeChunk = () => {
-    const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(max-width: 640px)").matches;
     // @ts-ignore
     const saveData = typeof navigator !== "undefined" && navigator?.connection?.saveData;
     return (isMobile || saveData) ? 6 : 9;
@@ -53,6 +95,7 @@ export default function Participer() {
   const [visibleCount, setVisibleCount] = useState(INITIAL_CHUNK);
   const loadMoreRef = useRef<HTMLDivElement | null>(null);
 
+  /* ---------- Recherche par nom ---------- */
   const [nameQuery, setNameQuery] = useState("");
   const normalize = useCallback((s: string | undefined | null) => {
     if (!s) return "";
@@ -62,10 +105,13 @@ export default function Participer() {
     setVisibleCount(INITIAL_CHUNK);
   }, [nameQuery, INITIAL_CHUNK]);
 
-  const isTabVisibleRef = useRef<boolean>(typeof document !== "undefined" ? document.visibilityState === "visible" : true);
-
+  /* ---------- Visibilité onglet / motion ---------- */
+  const isTabVisibleRef = useRef<boolean>(
+    typeof document !== "undefined" ? document.visibilityState === "visible" : true
+  );
   const prefersReducedMotion = useReducedMotion();
 
+  /* ---------- Utils ---------- */
   const showToast = (type: "success" | "error" | "info", message: string) => {
     setToast({ type, message });
     setTimeout(() => setToast(null), 3200);
@@ -76,14 +122,17 @@ export default function Participer() {
     !!p?.city && p.city.trim().length >= 2 &&
     !!p?.phone && p.phone.trim().length >= 6;
 
-  const openConfirm = (id: string, label?: string) => setConfirmState({ id, open: true, label });
-  const closeConfirm = () => setConfirmState({ id: null, open: false, label: undefined });
+  const openConfirm = (id: string, label?: string) =>
+    setConfirmState({ id, open: true, label });
+  const closeConfirm = () =>
+    setConfirmState({ id: null, open: false, label: undefined });
   const confirmCancel = async () => {
     if (!confirmState.id) return;
     await cancelSponsorship(confirmState.id);
     closeConfirm();
   };
 
+  /* ---------- Actions ---------- */
   const toggleSelfSponsorship = async () => {
     if (!user) return showToast("error", "Connectez-vous pour utiliser cette option");
     if (user.role !== "runner") return showToast("error", "Réservé aux marcheurs");
@@ -189,6 +238,7 @@ export default function Participer() {
     setProcessingId(null);
   };
 
+  /* ---------- Fetch + live ---------- */
   const fetchData = useCallback(async () => {
     try {
       const { data: auth } = await supabase.auth.getUser();
@@ -196,14 +246,22 @@ export default function Participer() {
 
       let profileData: any = null;
       if (currentUser) {
-        const { data: p } = await supabase.from("profiles").select("*").eq("id", currentUser.id).maybeSingle();
+        const { data: p } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", currentUser.id)
+          .maybeSingle();
         profileData = p || null;
       }
-      startTransition(() => setUser(currentUser ? { ...currentUser, ...profileData } : null));
+      startTransition(() =>
+        setUser(currentUser ? { ...currentUser, ...profileData } : null)
+      );
 
       const { data: profilesData } = await supabase
         .from("profiles")
-        .select("id, full_name, city, phone, expected_km, desired_pledge, role, is_artist");
+        .select(
+          "id, full_name, city, phone, expected_km, desired_pledge, role, is_artist"
+        );
 
       const { data: allSponsorships } = await supabase
         .from("sponsorships")
@@ -223,9 +281,13 @@ export default function Participer() {
         return isRunnerOk;
       });
 
-      const allRunners = (profilesData || []).filter((r: any) => r.role === "runner" && !!r.full_name);
+      const allRunners = (profilesData || []).filter(
+        (r: any) => r.role === "runner" && !!r.full_name
+      );
       const accepted = (allSponsorships || []).filter((s: any) => s.status === "accepted");
-      const acceptedSet = new Set(accepted.map((s: any) => s?.runner?.id).filter(Boolean));
+      const acceptedSet = new Set(
+        accepted.map((s: any) => s?.runner?.id).filter(Boolean)
+      );
       const waiting = allRunners.filter((r: any) => !acceptedSet.has(r.id));
       startTransition(() => setWaitingCount(waiting.length));
 
@@ -243,10 +305,16 @@ export default function Participer() {
 
     const ch = supabase
       .channel("sponsorships-live")
-      .on("postgres_changes", { event: "*", schema: "public", table: "sponsorships" }, fetchData)
+      .on(
+        "postgres_changes",
+        { event: "*", schema: "public", table: "sponsorships" },
+        fetchData
+      )
       .subscribe();
 
-    const onVis = () => { isTabVisibleRef.current = document.visibilityState === "visible"; };
+    const onVis = () => {
+      isTabVisibleRef.current = document.visibilityState === "visible";
+    };
     document.addEventListener("visibilitychange", onVis);
 
     const interval = setInterval(() => {
@@ -260,9 +328,13 @@ export default function Participer() {
     };
   }, [fetchData]);
 
+  /* ---------- Infinite scroll (bloc principal) ---------- */
   useEffect(() => {
     if (!loadMoreRef.current) return;
-    const isMobile = typeof window !== "undefined" && window.matchMedia && window.matchMedia("(max-width: 640px)").matches;
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(max-width: 640px)").matches;
     const rootMargin = isMobile ? "300px 0px" : "600px 0px";
     const io = new IntersectionObserver(
       (entries) => {
@@ -275,6 +347,7 @@ export default function Participer() {
     return () => io.disconnect();
   }, [CHUNK]);
 
+  /* ---------- Agrégats ---------- */
   const sponsorsByRunner = useMemo(() => {
     const map: Record<string, { accepted: Array<any>; pending: Array<any> }> = {};
     (sponsorships || []).forEach((s) => {
@@ -287,7 +360,10 @@ export default function Participer() {
     return map;
   }, [sponsorships]);
 
-  const acceptedOnly = useMemo(() => sponsorships.filter((s) => s.status === "accepted"), [sponsorships]);
+  const acceptedOnly = useMemo(
+    () => sponsorships.filter((s) => s.status === "accepted"),
+    [sponsorships]
+  );
 
   const potentialByRunner = useMemo(() => {
     const map = new Map<string, number>();
@@ -325,6 +401,7 @@ export default function Participer() {
 
   const globalAcceptedCount = acceptedOnly.length;
 
+  /* ---------- Groupes (main / artistes / top / remaining) ---------- */
   const { mainProfile, artistsGroup, topGroup, remainingGroup } = useMemo(() => {
     const list = [...runners];
 
@@ -332,9 +409,15 @@ export default function Participer() {
 
     const artists = list
       .filter((p) => p.is_artist === true)
-      .sort((a, b) => (a.full_name || "").localeCompare(b.full_name || "", "fr", { sensitivity: "base" }));
+      .sort((a, b) =>
+        (a.full_name || "").localeCompare(b.full_name || "", "fr", {
+          sensitivity: "base",
+        })
+      );
 
-    const runnerPool = list.filter((p) => p.is_artist !== true && (!MAIN_RUNNER_ID || p.id !== MAIN_RUNNER_ID));
+    const runnerPool = list.filter(
+      (p) => p.is_artist !== true && (!MAIN_RUNNER_ID || p.id !== MAIN_RUNNER_ID)
+    );
 
     const rankedCounts = runnerPool
       .map((r) => ({ r, count: sponsorsByRunner[r.id]?.accepted.length || 0 }))
@@ -345,7 +428,11 @@ export default function Participer() {
     const topIds = new Set(topParrains.map((x) => x.id));
     const remaining = runnerPool
       .filter((r) => !topIds.has(r.id))
-      .sort((a, b) => (potentialByRunner.get(b.id) || 0) - (potentialByRunner.get(a.id) || 0));
+      .sort(
+        (a, b) =>
+          (potentialByRunner.get(b.id) || 0) -
+          (potentialByRunner.get(a.id) || 0)
+      );
 
     return {
       mainProfile: main ? [main] : [],
@@ -353,10 +440,17 @@ export default function Participer() {
       topGroup: topParrains,
       remainingGroup: remaining,
     };
-  }, [runners, sponsorsByRunner, potentialByRunner, MAIN_RUNNER_ID, TOP_PARRAINS_LIMIT]);
+  }, [runners, sponsorsByRunner, potentialByRunner, MAIN_RUNNER_ID]);
 
+  /* ---------- Filtrage par recherche ---------- */
   const filteredGroups = useMemo(() => {
-    if (!nameQuery) return { main: mainProfile, artists: artistsGroup, top: topGroup, remaining: remainingGroup };
+    if (!nameQuery)
+      return {
+        main: mainProfile,
+        artists: artistsGroup,
+        top: topGroup,
+        remaining: remainingGroup,
+      };
     const q = normalize(nameQuery);
     const f = (arr: any[]) => arr.filter((r) => normalize(r.full_name).includes(q));
     return {
@@ -367,15 +461,57 @@ export default function Participer() {
     };
   }, [nameQuery, normalize, mainProfile, artistsGroup, topGroup, remainingGroup]);
 
+  /* ---------- Sans Parrains — Chaque km compte ---------- */
+  const noSponsorAll = useMemo(() => {
+    const q = normalize(nameQuery);
+    return runners
+      .filter((r) => r.role === "runner" && r.is_artist !== true)
+      .filter((r) => (sponsorsByRunner[r.id]?.accepted.length || 0) === 0)
+      .filter((r) => !q || normalize(r.full_name).includes(q));
+  }, [runners, sponsorsByRunner, nameQuery, normalize]);
+
+  // Pagination locale pour "Sans Parrains" (⚠️ nom distinct pour éviter collision)
+  const NO_SPONSOR_INITIAL_CHUNK = CHUNK;
+  const [visibleNoSponsor, setVisibleNoSponsor] = useState(NO_SPONSOR_INITIAL_CHUNK);
+  const loadMoreNoSponsorRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => setVisibleNoSponsor(NO_SPONSOR_INITIAL_CHUNK), [nameQuery, NO_SPONSOR_INITIAL_CHUNK]);
+  useEffect(() => {
+    if (!loadMoreNoSponsorRef.current) return;
+    const isMobile =
+      typeof window !== "undefined" &&
+      window.matchMedia &&
+      window.matchMedia("(max-width: 640px)").matches;
+    const rootMargin = isMobile ? "300px 0px" : "600px 0px";
+    const io = new IntersectionObserver(
+      (entries) => {
+        const [e] = entries;
+        if (e.isIntersecting) setVisibleNoSponsor((v) => v + CHUNK);
+      },
+      { rootMargin }
+    );
+    io.observe(loadMoreNoSponsorRef.current);
+    return () => io.disconnect();
+  }, [CHUNK]);
+
+  /* ---------- Comptages et utils d’affichage ---------- */
   const chf = (n: number) =>
-    new Intl.NumberFormat("fr-CH", { style: "currency", currency: "CHF", maximumFractionDigits: 2 }).format(n);
+    new Intl.NumberFormat("fr-CH", {
+      style: "currency",
+      currency: "CHF",
+      maximumFractionDigits: 2,
+    }).format(n);
 
   const formatCHF = useCallback(
-    (n: number) => new Intl.NumberFormat("fr-CH", { style: "currency", currency: "CHF", maximumFractionDigits: 2 }).format(n),
+    (n: number) =>
+      new Intl.NumberFormat("fr-CH", {
+        style: "currency",
+        currency: "CHF",
+        maximumFractionDigits: 2,
+      }).format(n),
     []
   );
 
-  // ✅ Force 'numeric: "always"' pour éviter les libellés spéciaux (“l’année dernière”)
+  // Relative time stable (numeric: "always")
   const fromNow = (iso?: string) => {
     if (!iso) return "";
     const d = new Date(iso).getTime();
@@ -402,6 +538,7 @@ export default function Participer() {
     return rtf.format(sign * year, "year");
   };
 
+  /* ---------- Dérivés perso ---------- */
   const pendingForMeAsRunner = useMemo(
     () => sponsorships.filter((s) => s.status === "pending" && s.runner?.id === user?.id),
     [sponsorships, user?.id]
@@ -413,13 +550,23 @@ export default function Participer() {
   const pendingCount = pendingForMeAsRunner.length + pendingSentByMe.length;
 
   const selfSponsor = useMemo(
-    () => (user ? sponsorships.find((s) => s.runner?.id === user.id && s.sponsor?.id === user.id) || null : null),
+    () =>
+      user
+        ? sponsorships.find(
+            (s) => s.runner?.id === user.id && s.sponsor?.id === user.id
+          ) || null
+        : null,
     [sponsorships, user?.id]
   );
   const selfSponsorActive = !!selfSponsor;
 
   const myActive = useMemo(
-    () => sponsorships.filter((s) => s.status === "accepted" && (s.runner?.id === user?.id || s.sponsor?.id === user?.id)),
+    () =>
+      sponsorships.filter(
+        (s) =>
+          s.status === "accepted" &&
+          (s.runner?.id === user?.id || s.sponsor?.id === user?.id)
+      ),
     [sponsorships, user?.id]
   );
   const myActiveTotal = useMemo(
@@ -438,21 +585,31 @@ export default function Participer() {
     else if (pendingSentByMe.length > 0) setPendingTab("sent");
   }, [pendingForMeAsRunner.length, pendingSentByMe.length]);
 
-  // (on garde la ref si besoin ensuite, la logique de base reste intacte)
   const activeScrollerRef = useRef<HTMLDivElement | null>(null);
 
   if (loading) {
-    return <div className="flex items-center justify-center h-screen text-gray-500 text-lg">Chargement...</div>;
+    return (
+      <div className="flex items-center justify-center h-screen text-gray-500 text-lg">
+        Chargement...
+      </div>
+    );
   }
 
   const isGuest = !user;
   const isIncomplete = user ? !isProfileComplete(user) : false;
   const isReadOnly = isGuest || isIncomplete;
 
-  const myRunnerPotential = user?.role === "runner" ? (potentialByRunner.get(user.id) || 0) : 0;
-  const mySponsorPotential = user ? (potentialBySponsor.get(user.id) || 0) : 0;
+  const myRunnerPotential =
+    user?.role === "runner" ? potentialByRunner.get(user.id) || 0 : 0;
+  const mySponsorPotential = user ? potentialBySponsor.get(user.id) || 0 : 0;
 
-  const computeVisibleByGroup = (groups: { main: any[]; artists: any[]; top: any[]; remaining: any[] }) => {
+  /* ---------- Visibles par groupe (pagination principale) ---------- */
+  const computeVisibleByGroup = (groups: {
+    main: any[];
+    artists: any[];
+    top: any[];
+    remaining: any[];
+  }) => {
     let left = visibleCount;
     const take = (arr: any[]) => {
       const out = arr.slice(0, Math.max(0, left));
@@ -463,11 +620,26 @@ export default function Participer() {
     const artistsV = take(groups.artists);
     const topV = take(groups.top);
     const remainingV = take(groups.remaining);
-    return { mainV, artistsV, topV, remainingV, allCount: groups.main.length + groups.artists.length + groups.top.length + groups.remaining.length };
+    return {
+      mainV,
+      artistsV,
+      topV,
+      remainingV,
+      allCount:
+        groups.main.length +
+        groups.artists.length +
+        groups.top.length +
+        groups.remaining.length,
+    };
   };
 
-  const { mainV, artistsV, topV, remainingV, allCount } = computeVisibleByGroup(filteredGroups);
+  const { mainV, artistsV, topV, remainingV, allCount } =
+    computeVisibleByGroup(filteredGroups);
 
+  // Inclure "Sans Parrains" dans l’évaluation du vide pour éviter disparition
+  const totalCountWithNoSponsor = allCount + noSponsorAll.length;
+
+  /* ==================== Rendu ==================== */
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-50 via-white to-gray-100 px-3 md:px-6 py-10 md:py-16">
       {(isGuest || isIncomplete) && (
@@ -488,18 +660,27 @@ export default function Participer() {
                     {isGuest ? (
                       <>
                         Vous n’êtes pas connecté.{" "}
-                        <a href="/login" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">
+                        <a
+                          href="/login"
+                          className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500"
+                        >
                           Se connecter
                         </a>{" "}
                         <span className="text-red-300 mx-1">•</span>{" "}
-                        <a href="/signup" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">
+                        <a
+                          href="/signup"
+                          className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500"
+                        >
                           Créer un compte
                         </a>
                       </>
                     ) : (
                       <>
                         Votre profil est incomplet.{" "}
-                        <a href="/onboarding" className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500">
+                        <a
+                          href="/onboarding"
+                          className="underline underline-offset-2 decoration-red-300 hover:decoration-red-500"
+                        >
                           Compléter mon profil
                         </a>
                       </>
@@ -514,6 +695,7 @@ export default function Participer() {
         </>
       )}
 
+      {/* --------- Header --------- */}
       <motion.div
         className="text-center mb-6 md:mb-8"
         initial={{ opacity: 0, y: 20 }}
@@ -533,6 +715,7 @@ export default function Participer() {
         </p>
       </motion.div>
 
+      {/* --------- Statistiques --------- */}
       <div className="max-w-5xl mx-auto grid grid-cols-1 sm:grid-cols-3 gap-4 mb-10">
         <StatCard
           title={user?.role === "runner" ? "Votre potentiel (marcheur)" : "Potentiel global (marcheurs)"}
@@ -564,6 +747,7 @@ export default function Participer() {
         />
       </div>
 
+      {/* --------- Toast --------- */}
       <AnimatePresence>
         {toast && (
           <motion.div
@@ -586,6 +770,7 @@ export default function Participer() {
       </AnimatePresence>
 
       <div className="flex flex-col gap-8 md:gap-10 max-w-7xl mx-auto">
+        {/* --------- Auto-parrainage --------- */}
         {user?.role === "runner" && (
           <div className="text-center -mt-2">
             <button
@@ -620,7 +805,7 @@ export default function Participer() {
           </div>
         )}
 
-        {/* === SECTION EN ATTENTE — RAFFINÉE (ORANGE CLAIR) === */}
+        {/* --------- Demandes en attente --------- */}
         {user && (
           <Section
             title={
@@ -727,7 +912,9 @@ export default function Participer() {
                               title="Annuler la demande"
                               aria-label="Annuler la demande"
                             >
-                              {processingId === s.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                              {processingId === s.id ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
                                 <span className="inline-flex items-center gap-2">
                                   <Trash2 className="w-4 h-4" /> Annuler
                                 </span>
@@ -744,9 +931,13 @@ export default function Participer() {
           </Section>
         )}
 
-        {/* === SECTION ACTIFS — VERT (nouvelle disposition raffinée) === */}
+        {/* --------- Parrainages actifs --------- */}
         {user && (
-          <Section title="Parrainages actifs" icon={<UserCheck className="w-5 h-5" />} color="from-emerald-700 via-emerald-800 to-teal-800">
+          <Section
+            title="Parrainages actifs"
+            icon={<UserCheck className="w-5 h-5" />}
+            color="from-emerald-700 via-emerald-800 to-teal-800"
+          >
             {myActive.length === 0 ? (
               <EmptyState text="Aucun parrainage actif" />
             ) : (
@@ -765,134 +956,271 @@ export default function Participer() {
           </Section>
         )}
 
-        {/* === Profils à soutenir (inchangé côté logique) === */}
-        <Section title="Profils à soutenir" icon={<Users className="w-5 h-5" />} color="from-blue-600 via-black to-green-600">
-          
-
-          <Suspense
-            fallback={
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                {Array.from({ length: Math.min(visibleCount, 9) }).map((_, i) => (
-                  <div key={i} className="h-48 rounded-2xl border border-gray-200 bg-white/60 animate-pulse" />
-                ))}
+        {/* --------- Profils à soutenir --------- */}
+        <Section
+          title="Profils à soutenir"
+          icon={<Users className="w-5 h-5" />}
+          color="from-blue-600 via-black to-green-600"
+        >
+          <ErrorBoundary
+            fallback={({ error, reset }) => (
+              <div className="rounded-2xl border border-red-200 bg-red-50 p-4 text-sm text-red-800">
+                <p className="font-semibold">Impossible de charger le module.</p>
+                <p className="mt-1">
+                  {typeof navigator !== "undefined" && !navigator.onLine
+                    ? "Vous semblez hors-ligne. Reconnectez-vous puis réessayez."
+                    : "Un problème temporaire est survenu (dev server / cache)."}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    onClick={reset}
+                    className="px-3 py-1.5 rounded-lg border border-red-300 bg-white text-red-700 hover:bg-red-100"
+                  >
+                    Réessayer
+                  </button>
+                  <button
+                    onClick={() => window.location.reload()}
+                    className="px-3 py-1.5 rounded-lg border border-gray-300 bg-white hover:bg-gray-50"
+                  >
+                    Recharger la page
+                  </button>
+                  <details className="ml-auto basis-full sm:basis-auto opacity-80">
+                    <summary>Détails</summary>
+                    <pre className="mt-2 whitespace-pre-wrap text-xs">
+                      {String(error?.message || error)}
+                    </pre>
+                  </details>
+                </div>
               </div>
-            }
+            )}
           >
-            {allCount === 0 ? (
-              <EmptyState text="Aucun profil ne correspond à votre recherche." />
-            ) : (
-              <div className="space-y-8">
-                {mainV.length > 0 && (
-                  <div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                      {mainV.map((runner: any) => {
-                        const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
-                        const myLink = user
-                          ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
-                          : null;
-                        const isSelf = user ? runner.id === user.id : false;
-                        const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
-                        const actionDisabled = isSelf || isReadOnly;
-                        const runnerPotential = potentialByRunner.get(runner.id) || 0;
-                        const myLinkStatus: "pending" | "accepted" | null =
-                          myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
+            <Suspense
+              fallback={
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                  {Array.from({ length: Math.min(visibleCount, 9) }).map((_, i) => (
+                    <div key={i} className="h-48 rounded-2xl border border-gray-200 bg-white/60 animate-pulse" />
+                  ))}
+                </div>
+              }
+            >
+              {totalCountWithNoSponsor === 0 ? (
+                <EmptyState text="Aucun profil ne correspond à votre recherche." />
+              ) : (
+                <div className="space-y-8">
+                  {/* Main (si défini) */}
+                  {mainV.length > 0 && (
+                    <div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                        {mainV.map((runner: any) => {
+                          const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                          const myLink = user
+                            ? sponsorships.find(
+                                (s) =>
+                                  s.runner?.id === runner.id &&
+                                  s.sponsor?.id === user?.id &&
+                                  ["pending", "accepted"].includes(s.status)
+                              )
+                            : null;
+                          const isSelf = user ? runner.id === user.id : false;
+                          const isProcessingThisCard =
+                            processingId === runner.id || processingId === myLink?.id;
+                          const actionDisabled = isSelf || isReadOnly;
+                          const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                          const myLinkStatus: "pending" | "accepted" | null = myLink
+                            ? myLink.status === "accepted"
+                              ? "accepted"
+                              : "pending"
+                            : null;
 
-                        return (
-                          <RunnerCard
-                            key={runner.id}
-                            runner={runner}
-                            isMain={true}
-                            isTop={false}
-                            accepted={agg.accepted}
-                            pending={agg.pending}
-                            potentialCHF={runnerPotential}
-                            processing={isProcessingThisCard}
-                            myLinkStatus={myLinkStatus}
-                            isActionDisabled={actionDisabled}
-                            onAction={() => {
-                              if (actionDisabled) {
-                                return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
-                              }
-                              if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
-                              return sendSponsorshipRequest(runner.id);
-                            }}
-                            formatCurrency={formatCHF}
-                          />
-                        );
-                      })}
+                          return (
+                            <RunnerCard
+                              key={runner.id}
+                              runner={runner}
+                              isMain={true}
+                              isTop={false}
+                              accepted={agg.accepted}
+                              pending={agg.pending}
+                              potentialCHF={runnerPotential}
+                              processing={isProcessingThisCard}
+                              myLinkStatus={myLinkStatus}
+                              isActionDisabled={actionDisabled}
+                              onAction={() => {
+                                if (actionDisabled) {
+                                  return showToast(
+                                    "error",
+                                    isGuest
+                                      ? "Connectez-vous pour parrainer un marcheur."
+                                      : "Complétez d’abord votre profil."
+                                  );
+                                }
+                                if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                                return sendSponsorshipRequest(runner.id);
+                              }}
+                              formatCurrency={formatCHF}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {artistsV.length > 0 && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Artistes</h3>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                      {artistsV.map((runner: any) => {
-                        const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
-                        const myLink = user
-                          ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
-                          : null;
-                        const isSelf = user ? runner.id === user.id : false;
-                        const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
-                        const actionDisabled = isSelf || isReadOnly;
-                        const runnerPotential = potentialByRunner.get(runner.id) || 0;
-                        const myLinkStatus: "pending" | "accepted" | null =
-                          myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
+                  {/* Artistes */}
+                  {artistsV.length > 0 && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Artistes</h3>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                        {artistsV.map((runner: any) => {
+                          const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                          const myLink = user
+                            ? sponsorships.find(
+                                (s) =>
+                                  s.runner?.id === runner.id &&
+                                  s.sponsor?.id === user?.id &&
+                                  ["pending", "accepted"].includes(s.status)
+                              )
+                            : null;
+                          const isSelf = user ? runner.id === user.id : false;
+                          const isProcessingThisCard =
+                            processingId === runner.id || processingId === myLink?.id;
+                          const actionDisabled = isSelf || isReadOnly;
+                          const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                          const myLinkStatus: "pending" | "accepted" | null = myLink
+                            ? myLink.status === "accepted"
+                              ? "accepted"
+                              : "pending"
+                            : null;
 
-                        return (
-                          <RunnerCard
-                            key={runner.id}
-                            runner={runner}
-                            isMain={false}
-                            isTop={false}
-                            accepted={agg.accepted}
-                            pending={agg.pending}
-                            potentialCHF={runnerPotential}
-                            processing={isProcessingThisCard}
-                            myLinkStatus={myLinkStatus}
-                            isActionDisabled={actionDisabled}
-                            onAction={() => {
-                              if (actionDisabled) {
-                                return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
-                              }
-                              if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
-                              return sendSponsorshipRequest(runner.id);
-                            }}
-                            formatCurrency={formatCHF}
-                          />
-                        );
-                      })}
+                          return (
+                            <RunnerCard
+                              key={runner.id}
+                              runner={runner}
+                              isMain={false}
+                              isTop={false}
+                              accepted={agg.accepted}
+                              pending={agg.pending}
+                              potentialCHF={runnerPotential}
+                              processing={isProcessingThisCard}
+                              myLinkStatus={myLinkStatus}
+                              isActionDisabled={actionDisabled}
+                              onAction={() => {
+                                if (actionDisabled) {
+                                  return showToast(
+                                    "error",
+                                    isGuest
+                                      ? "Connectez-vous pour parrainer un marcheur."
+                                      : "Complétez d’abord votre profil."
+                                  );
+                                }
+                                if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                                return sendSponsorshipRequest(runner.id);
+                              }}
+                              formatCurrency={formatCHF}
+                            />
+                          );
+                        })}
+                      </div>
                     </div>
-                  </div>
-                )}
+                  )}
 
-                {(topV.length > 0 || remainingV.length > 0) && (
-                  <div>
-                    <h3 className="text-sm font-semibold text-gray-700 mb-3">Marcheurs</h3>
-                    {topV.length > 0 && (
-                      <>
-                        <p className="text-xs text-gray-500 mb-2">Meilleur nombre de parrains</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
-                          {topV.map((runner: any) => {
-                            const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
-                            const myLink = user
-                              ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
-                              : null;
-                            const isSelf = user ? runner.id === user.id : false;
-                            const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
-                            const actionDisabled = isSelf || isReadOnly;
-                            const runnerPotential = potentialByRunner.get(runner.id) || 0;
-                            const myLinkStatus: "pending" | "accepted" | null =
-                              myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
+                  {/* Marcheurs (TOP -> Sans Parrains -> Search -> Remaining) */}
+                  {(topV.length > 0 || remainingV.length > 0 || noSponsorAll.length > 0) && (
+                    <div>
+                      <h3 className="text-sm font-semibold text-gray-700 mb-3">Marcheurs</h3>
 
-                            return (
-                              <div className="rounded-2xl bg-sky-50/60 border border-sky-100 p-2">
+                      {/* TOP parrains */}
+                      {topV.length > 0 && (
+                        <>
+                          <p className="text-xs text-gray-500 mb-2">Meilleur nombre de parrains</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+                            {topV.map((runner: any) => {
+                              const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                              const myLink = user
+                                ? sponsorships.find(
+                                    (s) =>
+                                      s.runner?.id === runner.id &&
+                                      s.sponsor?.id === user?.id &&
+                                      ["pending", "accepted"].includes(s.status)
+                                  )
+                                : null;
+                              const isSelf = user ? runner.id === user.id : false;
+                              const isProcessingThisCard =
+                                processingId === runner.id || processingId === myLink?.id;
+                              const actionDisabled = isSelf || isReadOnly;
+                              const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                              const myLinkStatus: "pending" | "accepted" | null = myLink
+                                ? myLink.status === "accepted"
+                                  ? "accepted"
+                                  : "pending"
+                                : null;
+
+                              return (
+                                <div className="rounded-2xl bg-sky-50/60 border border-sky-100 p-2">
+                                  <RunnerCard
+                                    key={runner.id}
+                                    runner={runner}
+                                    isMain={false}
+                                    isTop={true}
+                                    accepted={agg.accepted}
+                                    pending={agg.pending}
+                                    potentialCHF={runnerPotential}
+                                    processing={isProcessingThisCard}
+                                    myLinkStatus={myLinkStatus}
+                                    isActionDisabled={actionDisabled}
+                                    onAction={() => {
+                                      if (actionDisabled) {
+                                        return showToast(
+                                          "error",
+                                          isGuest
+                                            ? "Connectez-vous pour parrainer un marcheur."
+                                            : "Complétez d’abord votre profil."
+                                        );
+                                      }
+                                      if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                                      return sendSponsorshipRequest(runner.id);
+                                    }}
+                                    formatCurrency={formatCHF}
+                                  />
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+
+                      {/* Sans Parrains — Chaque km compte (juste après TOP) */}
+                      {noSponsorAll.length > 0 && (
+                        <>
+                          <h3 className="text-sm font-semibold text-gray-700 mb-2">
+                            Sans Parrains — Chaque km compte
+                          </h3>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6 mb-6">
+                            {noSponsorAll.slice(0, visibleNoSponsor).map((runner: any) => {
+                              const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                              const myLink = user
+                                ? sponsorships.find(
+                                    (s) =>
+                                      s.runner?.id === runner.id &&
+                                      s.sponsor?.id === user?.id &&
+                                      ["pending", "accepted"].includes(s.status)
+                                  )
+                                : null;
+                              const isSelf = user ? runner.id === user.id : false;
+                              const isProcessingThisCard =
+                                processingId === runner.id || processingId === myLink?.id;
+                              const actionDisabled = isSelf || isReadOnly;
+                              const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                              const myLinkStatus: "pending" | "accepted" | null = myLink
+                                ? myLink.status === "accepted"
+                                  ? "accepted"
+                                  : "pending"
+                                : null;
+
+                              return (
                                 <RunnerCard
                                   key={runner.id}
                                   runner={runner}
                                   isMain={false}
-                                  isTop={true}
+                                  isTop={false}
                                   accepted={agg.accepted}
                                   pending={agg.pending}
                                   potentialCHF={runnerPotential}
@@ -901,95 +1229,136 @@ export default function Participer() {
                                   isActionDisabled={actionDisabled}
                                   onAction={() => {
                                     if (actionDisabled) {
-                                      return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
+                                      return showToast(
+                                        "error",
+                                        isGuest
+                                          ? "Connectez-vous pour parrainer un marcheur."
+                                          : "Complétez d’abord votre profil."
+                                      );
                                     }
                                     if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
                                     return sendSponsorshipRequest(runner.id);
                                   }}
                                   formatCurrency={formatCHF}
                                 />
-                              </div>
-                            );
-                          })}
-                        </div>
-                      </>
-                    )}
-                    <div className="mb-4 flex justify-end">
-                      <div className="relative w-full sm:w-80">
-                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400" aria-hidden="true" />
-                        <input
-                          type="search"
-                          inputMode="search"
-                          value={nameQuery}
-                          onChange={(e) => setNameQuery(e.target.value)}
-                          placeholder="Rechercher par nom…"
-                          aria-label="Rechercher un profil par nom"
-                          className="w-full rounded-xl border border-gray-200 bg-white/80 pl-9 pr-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
-                          autoComplete="off"
-                        />
-                      </div>
-                    </div>
-                    {remainingV.length > 0 && (
-                      <>
-                        <p className="text-xs text-gray-500 mb-2">Meilleur potentiel</p>
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
-                          {remainingV.map((runner: any) => {
-                            const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
-                            const myLink = user
-                              ? sponsorships.find((s) => s.runner?.id === runner.id && s.sponsor?.id === user?.id && ["pending", "accepted"].includes(s.status))
-                              : null;
-                            const isSelf = user ? runner.id === user.id : false;
-                            const isProcessingThisCard = processingId === runner.id || processingId === myLink?.id;
-                            const actionDisabled = isSelf || isReadOnly;
-                            const runnerPotential = potentialByRunner.get(runner.id) || 0;
-                            const myLinkStatus: "pending" | "accepted" | null =
-                              myLink ? (myLink.status === "accepted" ? "accepted" : "pending") : null;
+                              );
+                            })}
+                          </div>
 
-                            return (
-                              <RunnerCard
-                                key={runner.id}
-                                runner={runner}
-                                isMain={false}
-                                isTop={false}
-                                accepted={agg.accepted}
-                                pending={agg.pending}
-                                potentialCHF={runnerPotential}
-                                processing={isProcessingThisCard}
-                                myLinkStatus={myLinkStatus}
-                                isActionDisabled={actionDisabled}
-                                onAction={() => {
-                                  if (actionDisabled) {
-                                    return showToast("error", isGuest ? "Connectez-vous pour parrainer un marcheur." : "Complétez d’abord votre profil.");
-                                  }
-                                  if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
-                                  return sendSponsorshipRequest(runner.id);
-                                }}
-                                formatCurrency={formatCHF}
-                              />
-                            );
-                          })}
+                          {visibleNoSponsor < noSponsorAll.length && (
+                            <div ref={loadMoreNoSponsorRef} className="mt-2 mb-6 flex justify-center">
+                              <button
+                                onClick={() => setVisibleNoSponsor((v) => v + CHUNK)}
+                                className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm hover:bg-gray-50"
+                              >
+                                Charger plus
+                              </button>
+                            </div>
+                          )}
+                        </>
+                      )}
+
+                      {/* Barre de recherche (après TOP + Sans Parrains) */}
+                      <div className="mb-4 flex justify-end">
+                        <div className="relative w-full sm:w-80">
+                          <Search
+                            className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-gray-400"
+                            aria-hidden="true"
+                          />
+                          <input
+                            type="search"
+                            inputMode="search"
+                            value={nameQuery}
+                            onChange={(e) => setNameQuery(e.target.value)}
+                            placeholder="Rechercher par nom…"
+                            aria-label="Rechercher un profil par nom"
+                            className="w-full rounded-xl border border-gray-200 bg-white/80 pl-9 pr-3 py-2 text-sm text-gray-900 placeholder:text-gray-400 shadow-sm focus:outline-none focus:ring-2 focus:ring-gray-300"
+                            autoComplete="off"
+                          />
                         </div>
-                      </>
-                    )}
-                  </div>
-                )}
+                      </div>
+
+                      {/* Remaining (Meilleur potentiel) */}
+                      {remainingV.length > 0 && (
+                        <>
+                          <p className="text-xs text-gray-500 mb-2">Meilleur potentiel</p>
+                          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                            {remainingV.map((runner: any) => {
+                              const agg = sponsorsByRunner[runner.id] || { accepted: [], pending: [] };
+                              const myLink = user
+                                ? sponsorships.find(
+                                    (s) =>
+                                      s.runner?.id === runner.id &&
+                                      s.sponsor?.id === user?.id &&
+                                      ["pending", "accepted"].includes(s.status)
+                                  )
+                                : null;
+                              const isSelf = user ? runner.id === user.id : false;
+                              const isProcessingThisCard =
+                                processingId === runner.id || processingId === myLink?.id;
+                              const actionDisabled = isSelf || isReadOnly;
+                              const runnerPotential = potentialByRunner.get(runner.id) || 0;
+                              const myLinkStatus: "pending" | "accepted" | null = myLink
+                                ? myLink.status === "accepted"
+                                  ? "accepted"
+                                  : "pending"
+                                : null;
+
+                              return (
+                                <RunnerCard
+                                  key={runner.id}
+                                  runner={runner}
+                                  isMain={false}
+                                  isTop={false}
+                                  accepted={agg.accepted}
+                                  pending={agg.pending}
+                                  potentialCHF={runnerPotential}
+                                  processing={isProcessingThisCard}
+                                  myLinkStatus={myLinkStatus}
+                                  isActionDisabled={actionDisabled}
+                                  onAction={() => {
+                                    if (actionDisabled) {
+                                      return showToast(
+                                        "error",
+                                        isGuest
+                                          ? "Connectez-vous pour parrainer un marcheur."
+                                          : "Complétez d’abord votre profil."
+                                      );
+                                    }
+                                    if (myLink) return openConfirm(myLink.id, "Annuler cette demande ?");
+                                    return sendSponsorshipRequest(runner.id);
+                                  }}
+                                  formatCurrency={formatCHF}
+                                />
+                              );
+                            })}
+                          </div>
+                        </>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+            </Suspense>
+          </ErrorBoundary>
+
+          {/* Bouton "Charger plus" de la liste paginée principale */}
+          {allCount > 0 &&
+            (mainV.length + artistsV.length + topV.length + remainingV.length) <
+              allCount && (
+              <div ref={loadMoreRef} className="mt-4 flex justify-center">
+                <button
+                  onClick={() => setVisibleCount((v) => v + CHUNK)}
+                  className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm hover:bg-gray-50"
+                >
+                  Charger plus
+                </button>
               </div>
             )}
-          </Suspense>
-
-          {allCount > 0 && (mainV.length + artistsV.length + topV.length + remainingV.length) < allCount && (
-            <div ref={loadMoreRef} className="mt-4 flex justify-center">
-              <button
-                onClick={() => setVisibleCount((v) => v + CHUNK)}
-                className="px-4 py-2 rounded-xl border border-gray-200 bg-white text-sm hover:bg-gray-50"
-              >
-                Charger plus
-              </button>
-            </div>
-          )}
         </Section>
       </div>
 
+      {/* --------- Modal confirmation --------- */}
       <AnimatePresence>
         {confirmState.open && (
           <motion.div
@@ -1040,6 +1409,7 @@ export default function Participer() {
   );
 }
 
+/* ==================== UI helpers ==================== */
 function Section({ title, icon, color, children }: any) {
   const prefersReducedMotion = useReducedMotion();
   return (
@@ -1050,19 +1420,13 @@ function Section({ title, icon, color, children }: any) {
       transition={{ duration: prefersReducedMotion ? 0 : 0.5 }}
       viewport={{ once: true, margin: "-20% 0px -10% 0px" }}
     >
-      <h2 className={`text-lg md:text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800 bg-gradient-to-r ${color} bg-clip-text text-transparent`}>
+      <h2
+        className={`text-lg md:text-2xl font-bold mb-6 flex items-center gap-3 text-gray-800 bg-gradient-to-r ${color} bg-clip-text text-transparent`}
+      >
         {icon} {title}
       </h2>
       {children}
     </motion.section>
-  );
-}
-
-function Card({ children }: any) {
-  return (
-    <div className="p-4 sm:p-5 rounded-2xl bg-white/60 backdrop-blur-sm md:backdrop-blur-md shadow-sm border border-gray-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:shadow-md transition-all contain-content">
-      {children}
-    </div>
   );
 }
 
@@ -1082,7 +1446,9 @@ function StatCard({
   return (
     <div className="rounded-2xl border border-gray-200 bg-white p-4 shadow-sm">
       <p className={`text-xs ${titleClass ?? "text-slate-600"}`}>{title}</p>
-      <p className={`text-2xl font-extrabold mt-0.5 ${valueClass ?? "text-slate-900"}`}>{value}</p>
+      <p className={`text-2xl font-extrabold mt-0.5 ${valueClass ?? "text-slate-900"}`}>
+        {value}
+      </p>
       {hint && <p className="text-[11px] text-slate-500 mt-0.5">{hint}</p>}
     </div>
   );
@@ -1092,7 +1458,6 @@ function EmptyState({ text }: any) {
   return <p className="text-gray-500 italic text-sm">{text}</p>;
 }
 
-/* === Pending refined card (orange) === */
 function PendingCard({
   leftTitle,
   chips,
@@ -1106,7 +1471,10 @@ function PendingCard({
 }) {
   return (
     <div className="group relative flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 rounded-2xl border border-amber-200 bg-white p-3 sm:p-4 shadow-sm overflow-hidden">
-      <span className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500" aria-hidden />
+      <span
+        className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-amber-300 via-amber-400 to-amber-500"
+        aria-hidden
+      />
       <div className="min-w-0 pl-1">
         <p className="text-gray-900 font-semibold leading-snug">{leftTitle}</p>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -1125,12 +1493,14 @@ function PendingCard({
           )}
         </div>
       </div>
-      <div className="sm:ml-auto shrink-0 flex gap-2 w-full sm:w-auto justify-center items-center">{rightActions}</div>
+      <div className="sm:ml-auto shrink-0 flex gap-2 w-full sm:w-auto justify-center items-center">
+        {rightActions}
+      </div>
     </div>
   );
 }
 
-/* === Actifs — vert, layout pro (grid/table switch) === */
+/* ==================== Actifs ==================== */
 function ActiveSection({
   items,
   userId,
@@ -1177,7 +1547,8 @@ function ActiveSection({
   }, [items, userId]);
 
   const counts = useMemo(() => {
-    let asRunner = 0, asSponsor = 0;
+    let asRunner = 0,
+      asSponsor = 0;
     for (const r of rows) r.isRunner ? asRunner++ : asSponsor++;
     return { asRunner, asSponsor, all: rows.length };
   }, [rows]);
@@ -1191,7 +1562,9 @@ function ActiveSection({
     if (query.trim()) {
       const q = query.trim().toLowerCase();
       out = out.filter((r) =>
-        (r.runnerName + " " + r.sponsorName + " " + r.city).toLowerCase().includes(q)
+        (r.runnerName + " " + r.sponsorName + " " + r.city)
+          .toLowerCase()
+          .includes(q)
       );
     }
 
@@ -1200,17 +1573,23 @@ function ActiveSection({
         out = [...out].sort((a, b) => b.potential - a.potential);
         break;
       case "name_asc":
-        out = [...out].sort((a, b) => a.runnerName.localeCompare(b.runnerName, "fr", { sensitivity: "base" }));
+        out = [...out].sort((a, b) =>
+          a.runnerName.localeCompare(b.runnerName, "fr", { sensitivity: "base" })
+        );
         break;
       default:
-        out = [...out].sort((a, b) => (new Date(b.createdAt || 0).getTime() - new Date(a.createdAt || 0).getTime()));
+        out = [...out].sort(
+          (a, b) =>
+            new Date(b.createdAt || 0).getTime() -
+            new Date(a.createdAt || 0).getTime()
+        );
     }
     return out;
   }, [rows, role, query, sort]);
 
   return (
     <div className="space-y-4">
-      {/* Header stats + contrôles (vert) */}
+      {/* Header stats + contrôles */}
       <div className="flex flex-col lg:flex-row lg:items-center gap-3 justify-between">
         <div className="inline-flex flex-wrap items-center gap-2 text-sm">
           <span className="rounded-full border border-emerald-200 bg-emerald-50/70 backdrop-blur px-2.5 py-1 text-emerald-800">
@@ -1226,20 +1605,26 @@ function ActiveSection({
           <div className="inline-flex rounded-2xl border border-emerald-200 bg-emerald-50/70 p-1">
             <button
               onClick={() => setRole("all")}
-              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${role === "all" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"}`}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${
+                role === "all" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"
+              }`}
             >
               Tous <span className="ml-1 text-[11px] opacity-70">{counts.all}</span>
             </button>
             <button
               onClick={() => setRole("as_runner")}
-              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${role === "as_runner" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"}`}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${
+                role === "as_runner" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"
+              }`}
               title="Liens où vous êtes marcheur·euse"
             >
               Marcheur <span className="ml-1 text-[11px] opacity-70">{counts.asRunner}</span>
             </button>
             <button
               onClick={() => setRole("as_sponsor")}
-              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${role === "as_sponsor" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"}`}
+              className={`px-3 py-1.5 rounded-xl text-sm font-medium ${
+                role === "as_sponsor" ? "bg-white shadow text-emerald-900" : "text-emerald-700 hover:bg-white/70"
+              }`}
               title="Liens où vous êtes parrain"
             >
               Parrain <span className="ml-1 text-[11px] opacity-70">{counts.asSponsor}</span>
@@ -1276,14 +1661,18 @@ function ActiveSection({
             <div className="inline-flex rounded-xl border border-emerald-200 bg-white overflow-hidden">
               <button
                 onClick={() => setView("grid")}
-                className={`px-2.5 py-2 ${view === "grid" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50"}`}
+                className={`px-2.5 py-2 ${
+                  view === "grid" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50"
+                }`}
                 aria-label="Vue cartes"
               >
                 <LayoutGrid className="w-4 h-4" />
               </button>
               <button
                 onClick={() => setView("table")}
-                className={`px-2.5 py-2 ${view === "table" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50"}`}
+                className={`px-2.5 py-2 ${
+                  view === "table" ? "bg-emerald-600 text-white" : "text-emerald-700 hover:bg-emerald-50"
+                }`}
                 aria-label="Vue tableau"
               >
                 <List className="w-4 h-4" />
@@ -1331,7 +1720,13 @@ function ActiveSection({
                 <tr key={r.id} className="hover:bg-emerald-50/60">
                   <td className="px-4 py-2 font-medium text-gray-900">{r.runnerName}</td>
                   <td className="px-4 py-2">
-                    <span className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${r.isRunner ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-teal-50 text-teal-700 border border-teal-200"}`}>
+                    <span
+                      className={`inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+                        r.isRunner
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                          : "bg-teal-50 text-teal-700 border border-teal-200"
+                      }`}
+                    >
                       {r.isRunner ? "Vous (marcheur)" : "Vous (parrain)"}
                     </span>
                   </td>
@@ -1347,7 +1742,9 @@ function ActiveSection({
                       aria-label="Annuler le parrainage"
                       disabled={processingId === r.id}
                     >
-                      {processingId === r.id ? <Loader2 className="w-4 h-4 animate-spin" /> : (
+                      {processingId === r.id ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
                         <span className="inline-flex items-center gap-2">
                           <Trash2 className="w-4 h-4" /> Annuler
                         </span>
@@ -1393,22 +1790,26 @@ function ActiveItemCard({
 }) {
   return (
     <article className="rounded-2xl border border-emerald-200 bg-white/80 backdrop-blur p-4 shadow-sm hover:shadow-md transition">
-      {/* Header : avatar + noms + rôle */}
       <header className="flex items-start gap-3">
-        <div className={`shrink-0 w-10 h-10 rounded-full ${GAZA_BG} flex items-center justify-center font-bold text-[11px]`}>
+        <div className={`shrink-0 w-10 h-10 rounded-full ${GazaSafe(GAZA_BG)} flex items-center justify-center font-bold text-[11px]`}>
           {row.runnerName.slice(0, 2).toUpperCase()}
         </div>
         <div className="min-w-0">
           <p className="font-semibold text-gray-900 truncate">{row.runnerName}</p>
-          <p className={`text-[12px] leading-tight ${GAZA_TEXT}`}>
+          <p className={`text-[12px] leading-tight ${GazaSafe(GAZA_TEXT)}`}>
             {row.isRunner ? `Parrain : ${row.sponsorName}` : `Vous parrainez ce marcheur`}
           </p>
-          <span className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${row.isRunner ? "bg-emerald-50 text-emerald-700 border border-emerald-200" : "bg-teal-50 text-teal-700 border border-teal-200"}`}>
+          <span
+            className={`mt-1 inline-flex items-center gap-1.5 rounded-full px-2 py-0.5 text-[11px] font-semibold ${
+              row.isRunner
+                ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                : "bg-teal-50 text-teal-700 border border-teal-200"
+            }`}
+          >
             {row.isRunner ? "Vous (marcheur)" : "Vous (parrain)"}
           </span>
         </div>
 
-        {/* Bouton action (subtil) */}
         <button
           onClick={() => openConfirm(row.id, "Annuler ce parrainage ?")}
           className="ml-auto p-2 rounded-lg border border-emerald-100 bg-white text-red-600 hover:bg-red-50"
@@ -1419,27 +1820,16 @@ function ActiveItemCard({
         </button>
       </header>
 
-      {/* Body : infos + potentiel en avant */}
       <div className="mt-3 grid grid-cols-2 gap-2 text-xs sm:text-sm">
-        <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
-          <span className="text-[11px] text-gray-500">Ville</span>
-          <span className="text-[12px] font-semibold text-gray-900">{row.city}</span>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
-          <span className="text-[11px] text-gray-500">Objectif</span>
-          <span className="text-[12px] font-semibold text-gray-900">{row.km} km</span>
-        </div>
-        <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
-          <span className="text-[11px] text-gray-500">Contribution</span>
-          <span className="text-[12px] font-semibold text-gray-900">{formatCHF(row.pledge)}/km</span>
-        </div>
+        <Pill label="Ville" value={row.city} />
+        <Pill label="Objectif" value={`${row.km} km`} />
+        <Pill label="Contribution" value={`${formatCHF(row.pledge)}/km`} />
         <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 px-2.5 py-1.5 flex items-center justify-between">
           <span className="text-[11px] text-emerald-700 font-medium">Potentiel</span>
           <span className="text-[12px] font-bold text-emerald-900">{formatCHF(row.potential)}</span>
         </div>
       </div>
 
-      {/* Footer : temps + lien annuler en texte */}
       <footer className="mt-2 flex items-center justify-between text-[11px]">
         <span className="inline-flex items-center gap-1 text-gray-500">
           <Clock className="w-3.5 h-3.5" />
@@ -1458,17 +1848,7 @@ function ActiveItemCard({
   );
 }
 
-/* (Optionnel/legacy) Composant d’info simple */
-function InfoTile({ label, children }: { label: string; children: React.ReactNode }) {
-  return (
-    <div className="rounded-lg bg-white/70 border border-gray-200 px-3 py-2 text-sm">
-      <dt className="text-gray-500">{label}</dt>
-      <dd className="font-semibold text-gray-800">{children}</dd>
-    </div>
-  );
-}
-
-/* (Optionnel/legacy) */
+/* Petits helpers UI réutilisés */
 function Pill({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-gray-200 bg-white/80 px-2.5 py-1.5 flex items-center justify-between">
@@ -1478,38 +1858,7 @@ function Pill({ label, value }: { label: string; value: string }) {
   );
 }
 
-/* Élément de ligne legacy utilisé ailleurs si nécessaire */
-function PendingItem({
-  title,
-  metaLeft,
-  createdAt,
-  right,
-  fromNow,
-}: {
-  title: React.ReactNode;
-  metaLeft: Array<{ label: string; value: string }>;
-  createdAt?: string;
-  right?: React.ReactNode;
-  fromNow: (iso?: string) => string;
-}) {
-  return (
-    <div className="group flex flex-col sm:flex-row sm:items-start justify-between gap-3 sm:gap-4 rounded-xl sm:rounded-2xl border border-amber-200 bg-amber-50/60 hover:bg-amber-50 transition-colors px-3.5 py-3 sm:px-4 sm:py-3 shadow-sm">
-      <div className="min-w-0">
-        <p className="text-gray-900 font-medium truncate">{title}</p>
-        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
-          {metaLeft.map((m, idx) => (
-            <span key={idx} className="inline-flex items-center gap-1 rounded-full bg-white/70 border border-amber-200 px-2 py-0.5 text-[11px] text-gray-700">
-              <strong className="text-gray-900">{m.label}:</strong> {m.value}
-            </span>
-          ))}
-          {createdAt && (
-            <span className="inline-flex items-center gap-1 text-gray-500">
-              <Clock className="w-3.5 h-3.5" /> {fromNow(createdAt)}
-            </span>
-          )}
-        </div>
-      </div>
-      <div className="mt-2 sm:mt-0 sm:ml-auto shrink-0 flex gap-2 w-full sm:w-auto justify-center items-center">{right}</div>
-    </div>
-  );
+/* Evite un crash si classes vides/undefined */
+function GazaSafe(c: string) {
+  return c || "";
 }

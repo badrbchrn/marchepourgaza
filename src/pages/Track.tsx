@@ -1,17 +1,51 @@
-// Track.tsx
-import { useEffect, useMemo, useState } from "react";
+// src/pages/Track.tsx — PROD (activation auto à 06:00 Europe/Zurich, maj tous les 50 m)
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
-import { MapPinned, Clock, Flag, Navigation, Heart } from "lucide-react";
-
-// Leaflet
-import { MapContainer, TileLayer, Marker, Popup, Polyline, Polygon } from "react-leaflet";
+import {
+  MapPinned,
+  Clock,
+  Flag,
+  Navigation,
+  Heart,
+  Share2,
+  StopCircle,
+  Maximize2,
+  X,
+  LocateFixed,
+} from "lucide-react";
+import {
+  MapContainer,
+  TileLayer,
+  Marker,
+  Popup,
+  Polyline,
+  useMap,
+} from "react-leaflet";
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
 /* ======================== LIVE CONFIG ======================== */
-const MARCH_START_ISO = "2025-10-25T07:00:00+02:00";
-const FORCE_LIVE = false;
+/** Live ON si on est après 06:00 (heure de Zurich) le jour courant */
+const FORCE_LIVE = (import.meta as any).env?.VITE_FORCE_LIVE === "1";
+const nowZurich = () =>
+  new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Zurich" }));
+const liveIsOnNow = () => {
+  const n = nowZurich();
+  const s = new Date(n);
+  s.setHours(6, 0, 0, 0); // 06:00
+  return n >= s;
+};
+//VITE_LYAN_ID
+/* ======================== ENV / ADMIN ======================== */
+const ADMIN_ID = ((import.meta as any).env?.VITE_LYAN_ID as string | undefined)?.trim();
+const ADMIN_LABEL = "Lyan";
+
+/* ======================== DISTANCES / INTERVALS (PROD) ======================== */
+const DIST_TRAIL_APPEND_M = 20;   // adoucir le trait visuel
+const DIST_BROADCAST_M    = 50;   // diffusion realtime
+const DIST_DB_WRITE_M     = 50;   // écriture DB
+const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
@@ -40,106 +74,380 @@ const fadeUp = (delay = 0) => ({
   viewport: { once: true, margin: "-80px" },
 });
 
-/* ======================== ICONES ======================== */
-const startIcon = new L.Icon({
-  iconUrl: "https://cdn-icons-png.flaticon.com/512/447/447031.png", // pastille rouge
-  iconSize: [40, 40],
-  iconAnchor: [20, 40],
+/* ======================== Marker icons génériques ======================== */
+const defaultActiveIcon = new L.Icon({
+  iconUrl: "https://cdn-icons-png.flaticon.com/512/447/447031.png",
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
 });
-const activeIcon = startIcon;
-const inactiveIcon = new L.Icon({
+const defaultInactiveIcon = new L.Icon({
   iconUrl: "https://cdn-icons-png.flaticon.com/512/684/684908.png",
-  iconSize: [40, 40],
-  iconAnchor: [20, 40],
+  iconSize: [36, 36],
+  iconAnchor: [18, 36],
 });
 
-/* ======================== CARTE – LÉMAN ======================== */
-// Centre & limites
-const LEMAN_CENTER: [number, number] = [46.45, 6.56];
-const LEMAN_BOUNDS: [[number, number], [number, number]] = [
-  [46.0, 5.85], // SW
-  [46.7, 7.05], // NE
-];
+/* ======================== PIN Gaza – sobre / argenté ======================== */
+export const makeGazaProPin = (label = "Lyan") =>
+  L.divIcon({
+    className: "gaza-pro-pin",
+    iconSize: [84, 106],
+    iconAnchor: [42, 102],
+    html: `
+    <div style="position:relative;width:84px;height:106px">
+      <svg width="84" height="106" viewBox="0 0 84 106" xmlns="http://www.w3.org/2000/svg">
+        <defs>
+          <radialGradient id="core" cx="50%" cy="40%" r="70%">
+            <stop offset="0%" stop-color="#ffffff"/>
+            <stop offset="100%" stop-color="#ECEFF3"/>
+          </radialGradient>
+          <linearGradient id="ringGlass" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".65"/>
+            <stop offset="100%" stop-color="#D1D5DB" stop-opacity=".85"/>
+          </linearGradient>
+          <filter id="softDrop" x="-40%" y="-40%" width="180%" height="180%">
+            <feOffset dy="2"/>
+            <feGaussianBlur stdDeviation="3"/>
+            <feColorMatrix type="matrix"
+              values="0 0 0 0 0
+                      0 0 0 0 0
+                      0 0 0 0 0
+                      0 0 0 .25 0"/>
+            <feBlend in2="SourceGraphic" mode="normal"/>
+          </filter>
+        </defs>
 
-// Contour plus précis du lac (≈ 40 points, sens horaire)
-const LEMAN_OUTLINE: [number, number][] = [
-  // ⬆️ rive nord (Suisse) Genève → Villeneuve
-  [46.205, 6.147], // Genève, Bains-des-Pâquis
-  [46.224, 6.171], // Cologny
-  [46.250, 6.190], // Anières
-  [46.283, 6.214], // Versoix
-  [46.321, 6.220], // Coppet
-  [46.358, 6.230],
-  [46.383, 6.238], // Nyon
-  [46.410, 6.260], // Gland
-  [46.440, 6.300],
-  [46.456, 6.330], // Rolle
-  [46.479, 6.374], // Allaman
-  [46.498, 6.430],
-  [46.506, 6.496], // Morges
-  [46.510, 6.560],
-  [46.510, 6.624], // Lausanne (Ouchy)
-  [46.508, 6.671], // Pully
-  [46.503, 6.707], // Lutry
-  [46.493, 6.740],
-  [46.480, 6.780],
-  [46.462, 6.842], // Vevey
-  [46.446, 6.880],
-  [46.437, 6.910], // Montreux
-  [46.405, 6.925],
-  [46.397, 6.928], // Villeneuve
-  // ⬇️ rive sud (France) Villeneuve → Genève
-  [46.395, 6.900],
-  [46.395, 6.860],
-  [46.399, 6.820],
-  [46.400, 6.780], // St-Gingolph
-  [46.402, 6.740],
-  [46.402, 6.700],
-  [46.401, 6.660], // Meillerie/Maxilly
-  [46.401, 6.640], // Évian
-  [46.398, 6.590], // Amphion
-  [46.382, 6.520],
-  [46.375, 6.480], // Thonon
-  [46.365, 6.440], // Sciez
-  [46.346, 6.400], // Excenevex
-  [46.326, 6.360],
-  [46.307, 6.330], // Yvoire
-  [46.293, 6.305], // Nernier
-  [46.280, 6.285], // Messery
-  [46.266, 6.262], // Chens-sur-Léman
-  [46.254, 6.238], // frontière/Veigy
-  [46.240, 6.214],
-  [46.228, 6.190], // Hermance / Anières
-  [46.215, 6.168], // Cologny
-  [46.205, 6.147], // retour Genève
-];
+        <ellipse cx="42" cy="98" rx="13.5" ry="5.5" fill="rgba(2,6,23,.18)"/>
+        <path d="M42 70 C42 82 42 86 42 92"
+              stroke="#C7CED9" stroke-width="2.2" stroke-linecap="round" fill="none"/>
 
-// Route (dashed) = même contour (sobre)
-const LEMAN_ROUTE = LEMAN_OUTLINE;
+        <circle cx="42" cy="36" r="20" fill="url(#ringGlass)" filter="url(#softDrop)" stroke="#E5E7EB"/>
+
+        <circle cx="42" cy="36" r="17.5" fill="none" stroke="#E11D48" stroke-width="7.5"
+                pathLength="100" stroke-dasharray="34 66" stroke-dashoffset="0"
+                stroke-linecap="round" transform="rotate(-90 42 36)"/>
+        <circle cx="42" cy="36" r="17.5" fill="none" stroke="#0F172A" stroke-width="7.5"
+                pathLength="100" stroke-dasharray="33 67" stroke-dashoffset="34"
+                stroke-linecap="round" transform="rotate(-90 42 36)"/>
+        <circle cx="42" cy="36" r="17.5" fill="none" stroke="#16A34A" stroke-width="7.5"
+                pathLength="100" stroke-dasharray="33 67" stroke-dashoffset="67"
+                stroke-linecap="round" transform="rotate(-90 42 36)"/>
+
+        <circle cx="42" cy="36" r="12.5" fill="url(#core)" stroke="#E5E7EB" stroke-width="1.5"/>
+
+        <g transform="translate(26,56)">
+          <rect width="32" height="18" rx="9"
+                fill="rgba(255,255,255,.96)" stroke="#E5E7EB"/>
+          <text x="16" y="12"
+            font-family="Inter, system-ui, -apple-system, 'Segoe UI', Roboto"
+            font-size="11" font-weight="800" text-anchor="middle" fill="#0F172A">
+            ${label}
+          </text>
+        </g>
+      </svg>
+    </div>
+    `,
+  });
+
+/* ======================== Types / Utils ======================== */
+type LocationRow = {
+  user_id: string;
+  lat: number;
+  lng: number;
+  is_active: boolean;
+  updated_at: string;
+  accuracy?: number | null;
+  created_at?: string | null;
+};
+
+const haversine = (a: [number, number], b: [number, number]) => {
+  const R = 6371e3;
+  const toRad = (x: number) => (x * Math.PI) / 180;
+  const dLat = toRad(b[0] - a[0]);
+  const dLng = toRad(b[1] - a[1]);
+  const lat1 = toRad(a[0]);
+  const lat2 = toRad(b[0]);
+  const s =
+    Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1) * Math.cos(lat2) * Math.sin(dLng / 2) ** 2;
+  return 2 * R * Math.atan2(Math.sqrt(s), Math.sqrt(1 - s));
+};
+
+/* ======================== Focus (TOP-CENTER) ======================== */
+function FocusLyanButton({ lyanPos }: { lyanPos: [number, number] | null }) {
+  const map = useMap();
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: "50%",
+        top: "10px",
+        transform: "translateX(-50%)",
+        zIndex: 1000,
+        pointerEvents: "auto",
+      }}
+    >
+      <button
+        onClick={() => lyanPos && map.flyTo(lyanPos, Math.max(17, map.getZoom()), { duration: 0.8 })}
+        className="inline-flex items-center gap-2 rounded-xl bg-white/90 backdrop-blur px-2.5 py-1.5 text-xs font-semibold text-slate-900 border border-gray-200 ring-1 ring-black/10 shadow hover:shadow-md sm:px-3 sm:py-2 sm:text-sm"
+        aria-label="Centrer sur Lyan"
+      >
+        <LocateFixed className="h-4 w-4" />
+        Centrer
+      </button>
+    </div>
+  );
+}
+
+/* ======================== Error Boundary ======================== */
+class MapErrorBoundary extends React.Component<{ children: React.ReactNode }, { error: any }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: any) {
+    return { error };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex h-full w-full items-center justify-center bg-white/80">
+          <div className="rounded-2xl border border-gray-200 bg-white p-6 text-center shadow">
+            <p className="font-semibold text-gray-900 mb-2">La carte a rencontré un souci.</p>
+            <button
+              onClick={() => this.setState({ error: null })}
+              className="rounded-lg bg-gray-900 px-4 py-2 text-white font-semibold"
+            >
+              Réessayer
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children as any;
+  }
+}
+
+/* ======================== LiveMap ======================== */
+function LiveMap({
+  profiles,
+  locations,
+  trails,
+  heightClass,
+  lyanPos,
+}: {
+  profiles: any[];
+  locations: LocationRow[];
+  trails: Record<string, [number, number][]>;
+  heightClass: string;
+  lyanPos: [number, number] | null;
+}) {
+  return (
+    <div className={`relative w-full ${heightClass}`}>
+      <style>{`
+        .leaflet-control-zoom a {
+          background: linear-gradient(180deg,#FFFFFF 0%,#F1F5F9 100%);
+          border: 1px solid rgba(17,24,39,.08);
+          backdrop-filter: blur(6px);
+          box-shadow: 0 10px 22px rgba(0,0,0,.08);
+        }
+        .leaflet-container {
+          font-family: Inter, system-ui, -apple-system, Segoe UI, Roboto;
+        }
+      `}</style>
+
+      <MapContainer
+        center={lyanPos || [46.21, 6.15]}
+        zoom={16}
+        minZoom={5}
+        maxZoom={19}          // limite pour éviter 400 OSM
+        zoomControl={true}
+        attributionControl={false}
+        className="absolute inset-0 rounded-2xl overflow-hidden shadow bg-[#eef1f5]"
+      >
+        <TileLayer
+          url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png"
+          maxZoom={19}
+          maxNativeZoom={19}
+          updateWhenIdle
+        />
+
+        {Object.entries(trails).map(([uid, points]) =>
+          points.length > 1 ? (
+            <Polyline
+              key={`trail-${uid}`}
+              positions={points}
+              pathOptions={{
+                color: uid === ADMIN_ID ? "#10B981" : "#94A3B8",
+                weight: uid === ADMIN_ID ? 6 : 4,
+                opacity: uid === ADMIN_ID ? 0.95 : 0.55,
+                lineCap: "round",
+                lineJoin: "round",
+              }}
+            />
+          ) : null
+        )}
+
+        {locations.map((l) => {
+          const profile = profiles.find((p) => p.id === l.user_id);
+          const icon =
+            l.user_id === ADMIN_ID
+              ? (makeGazaProPin(ADMIN_LABEL) as any)
+              : l.is_active
+              ? defaultActiveIcon
+              : defaultInactiveIcon;
+
+          return (
+            <Marker key={`${l.user_id}-${l.updated_at}`} position={[l.lat, l.lng]} icon={icon}>
+              <Popup>
+                <strong>{l.user_id === ADMIN_ID ? ADMIN_LABEL : profile?.full_name || "Marcheur"}</strong>
+                <br />
+                <span className={`flex items-center gap-1 ${l.is_active ? "text-green-600" : "text-red-600"}`}>
+                  <span className={`w-2 h-2 rounded-full ${l.is_active ? "bg-green-500 animate-pulse" : "bg-red-500"}`} />
+                  {l.is_active ? "En marche" : "Inactif"}
+                </span>
+                <div className="mt-1 text-xs text-gray-500">
+                  Maj : {new Date(l.updated_at).toLocaleTimeString()}
+                  {typeof l.accuracy === "number" ? ` • ±${Math.round(l.accuracy)} m` : ""}
+                </div>
+              </Popup>
+            </Marker>
+          );
+        })}
+
+        <FocusLyanButton lyanPos={lyanPos} />
+      </MapContainer>
+    </div>
+  );
+}
 
 /* ======================== PAGE ======================== */
 export default function Marche() {
-  const now = new Date();
-  const start = useMemo(() => new Date(MARCH_START_ISO), []);
-  const isMarchDay =
-    now.getFullYear() === start.getFullYear() &&
-    now.getMonth() === start.getMonth() &&
-    now.getDate() === start.getDate();
+  const [liveNow, setLiveNow] = useState(FORCE_LIVE || liveIsOnNow());
 
-  const LIVE = FORCE_LIVE || isMarchDay;
+  // met à jour le statut LIVE au changement d’heure locale (Zurich)
+  useEffect(() => {
+    const t = setInterval(() => setLiveNow(FORCE_LIVE || liveIsOnNow()), 30_000);
+    return () => clearInterval(t);
+  }, []);
 
   const [profiles, setProfiles] = useState<any[]>([]);
-  const [locations, setLocations] = useState<any[]>([]);
+  const [locations, setLocations] = useState<LocationRow[]>([]);
+  const [userId, setUserId] = useState<string | null>(null);
 
+  const [trails, setTrails] = useState<Record<string, [number, number][]>>({});
+  const lastDbPointRef = useRef<Record<string, [number, number]>>({});
+  const lastBroadcastRef = useRef<Record<string, [number, number]>>({});
+  const TRAIL_MAX_POINTS = 5000;
+
+  const [sharing, setSharing] = useState(false);
+  const watchIdRef = useRef<number | null>(null);
+  const lastUploadAtRef = useRef<number>(0);
+
+  const [fullscreen, setFullscreen] = useState(false);
+
+  const rtChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
+  const presencePointsRef = useRef<[number, number][]>([]);
+
+  // Wake Lock pour garder l'écran éveillé pendant le partage
+  const wakeRef = useRef<any>(null);
+  async function enableWakeLock() {
+    try {
+      // @ts-ignore
+      if (navigator.wakeLock) wakeRef.current = await navigator.wakeLock.request("screen");
+    } catch {}
+  }
+  async function releaseWakeLock() {
+    try {
+      await wakeRef.current?.release();
+    } catch {}
+    wakeRef.current = null;
+  }
+  useEffect(() => {
+    const onVis = () => {
+      if (document.visibilityState === "visible" && sharing) enableWakeLock();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => document.removeEventListener("visibilitychange", onVis);
+  }, [sharing]);
+
+  /* Auth */
+  useEffect(() => {
+    supabase.auth.getUser().then(({ data }) => setUserId(data.user?.id ?? null));
+    const { data: sub } = supabase.auth.onAuthStateChange((_e, sess) =>
+      setUserId(sess?.user?.id ?? null)
+    );
+    return () => sub?.subscription.unsubscribe();
+  }, []);
+
+  /* Realtime channel (broadcast + presence) */
+  useEffect(() => {
+    const ch = supabase.channel("lyan-track", {
+      config: { presence: { key: "viewer-" + Math.random().toString(36).slice(2) } },
+    });
+
+    ch.on("broadcast", { event: "point" }, ({ payload }) => {
+      const { user_id, lat, lng } = payload as { user_id: string; lat: number; lng: number };
+      setTrails((prev) => {
+        const t = prev[user_id] || [];
+        const p: [number, number] = [lat, lng];
+        const last = t[t.length - 1];
+        if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
+          return { ...prev, [user_id]: [...t, p].slice(-TRAIL_MAX_POINTS) };
+        }
+        return prev;
+      });
+    });
+
+    ch.on("presence", { event: "sync" }, () => {
+      const state = ch.presenceState() as Record<string, Array<{ user_id: string; points?: [number, number][] }>>;
+      const all = Object.values(state).flat();
+      const adminPresence = all.find((p) => p.user_id === ADMIN_ID);
+      if (adminPresence?.points?.length) {
+        setTrails((prev) => ({ ...prev, [ADMIN_ID!]: adminPresence.points!.slice(-TRAIL_MAX_POINTS) }));
+      }
+    });
+
+    ch.subscribe();
+    rtChannelRef.current = ch;
+
+    return () => {
+      if (rtChannelRef.current) {
+        rtChannelRef.current.unsubscribe();
+        rtChannelRef.current = null;
+      }
+    };
+  }, []);
+
+  /* Initial fetch + polling + realtime DB */
   useEffect(() => {
     const fetchData = async () => {
       const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
       setProfiles(profilesData || []);
 
-      const { data: locs } = await supabase
+      const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(); // 12h
+      const { data: recents } = await supabase
         .from("locations")
-        .select("user_id, lat, lng, is_active, updated_at");
-      setLocations(locs || []);
+        .select("user_id, lat, lng, is_active, updated_at, accuracy, created_at")
+        .gte("updated_at", since)
+        .order("updated_at", { ascending: true });
+
+      const latestMap = new Map<string, LocationRow>();
+      (recents || []).forEach((r) => latestMap.set(r.user_id, r));
+      setLocations(Array.from(latestMap.values()));
+
+      setTrails((prev) => {
+        const next = { ...prev };
+        for (const row of recents || []) {
+          const p: [number, number] = [row.lat, row.lng];
+          const t = next[row.user_id] || [];
+          const last = t[t.length - 1];
+          if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
+            next[row.user_id] = [...t, p].slice(-TRAIL_MAX_POINTS);
+            lastDbPointRef.current[row.user_id] = p;
+          }
+        }
+        return next;
+      });
     };
 
     fetchData();
@@ -156,10 +464,115 @@ export default function Marche() {
     };
   }, []);
 
+  const canSeeShareButton = !!userId && !!ADMIN_ID && userId === ADMIN_ID;
   const activeCount = locations.filter((l) => l.is_active).length;
 
+  const lyanPos = useMemo<[number, number] | null>(() => {
+    const row = locations.find((l) => l.user_id === ADMIN_ID);
+    return row ? [row.lat, row.lng] : null;
+  }, [locations]);
+
+  /* Start/Stop sharing (PROD: 50 m) */
+  const startSharing = async () => {
+    if (!canSeeShareButton) return;
+    if (!("geolocation" in navigator)) {
+      alert("La géolocalisation n’est pas disponible sur cet appareil.");
+      return;
+    }
+    setSharing(true);
+    enableWakeLock();
+
+    if (rtChannelRef.current) {
+      rtChannelRef.current.track({ user_id: userId!, points: [] });
+    }
+    presencePointsRef.current = [];
+
+    watchIdRef.current = navigator.geolocation.watchPosition(
+      async (pos) => {
+        const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
+        const accuracy = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null;
+
+        // Traînée locale (20 m) + broadcast à 50 m
+        setTrails((prev) => {
+          const t = prev[userId!] || [];
+          const last = t[t.length - 1];
+          const shouldAppend = !last || haversine(last, coords) > DIST_TRAIL_APPEND_M;
+          if (shouldAppend) {
+            const updated = [...t, coords].slice(-TRAIL_MAX_POINTS);
+            presencePointsRef.current = updated.slice(-600);
+            // Broadcast si distance >= 50 m depuis le dernier broadcast
+            const lastB = lastBroadcastRef.current[userId!];
+            if (!lastB || haversine(lastB, coords) >= DIST_BROADCAST_M) {
+              rtChannelRef.current?.track({ user_id: userId!, points: presencePointsRef.current });
+              rtChannelRef.current?.send({
+                type: "broadcast",
+                event: "point",
+                payload: { user_id: userId!, lat: coords[0], lng: coords[1] },
+              });
+              lastBroadcastRef.current[userId!] = coords;
+            }
+            return { ...prev, [userId!]: updated };
+          }
+          return prev;
+        });
+
+        // Insert DB si >= 50 m + intervalle OK
+        const now = Date.now();
+        const lastDb = lastDbPointRef.current[userId!];
+        const movedEnough = !lastDb || haversine(lastDb, coords) >= DIST_DB_WRITE_M;
+        const intervalOk = now - lastUploadAtRef.current >= UPLOAD_MIN_INTERVAL_MS;
+
+        if (movedEnough && intervalOk) {
+          lastUploadAtRef.current = now;
+          lastDbPointRef.current[userId!] = coords;
+          await supabase.from("locations").insert({
+            user_id: userId!,
+            lat: coords[0],
+            lng: coords[1],
+            accuracy,
+            is_active: true,
+            updated_at: new Date().toISOString(),
+          });
+        }
+      },
+      () => {
+        alert("Impossible d’obtenir la position. Vérifiez les permissions.");
+        setSharing(false);
+        releaseWakeLock();
+      },
+      { enableHighAccuracy: true, maximumAge: 500, timeout: 10000 }
+    );
+  };
+
+  const stopSharing = async () => {
+    setSharing(false);
+    releaseWakeLock();
+    if (watchIdRef.current != null) {
+      navigator.geolocation.clearWatch(watchIdRef.current);
+      watchIdRef.current = null;
+    }
+    if (canSeeShareButton) {
+      const last = lastDbPointRef.current[userId!];
+      await supabase.from("locations").insert({
+        user_id: userId!,
+        lat: last?.[0] ?? 0,
+        lng: last?.[1] ?? 0,
+        is_active: false,
+        updated_at: new Date().toISOString(),
+      });
+    }
+    rtChannelRef.current?.track({ user_id: userId!, points: [] });
+  };
+
+  useEffect(() => {
+    return () => {
+      if (watchIdRef.current != null) navigator.geolocation.clearWatch(watchIdRef.current);
+      releaseWakeLock();
+    };
+  }, []);
+
   return (
-    <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-100 text-gray-800">
+    <div className="min-h-screen bg-gradient-to-b from-zinc-100 via-slate-50 to-zinc-200 text-gray-800">
       {/* HERO */}
       <motion.section
         className="relative overflow-hidden"
@@ -167,30 +580,24 @@ export default function Marche() {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.6 }}
       >
-        <div className="mx-auto max-w-7xl px-6 py-16 sm:py-20">
-          <div className="relative rounded-3xl bg-gradient-to-r from-green-50 via-white to-red-50 ring-1 ring-black/5 p-8 sm:p-12 text-center shadow-sm">
+        <div className="mx-auto max-w-7xl px-4 sm:px-6 py-10 sm:py-16">
+          <div className="relative rounded-3xl bg-gradient-to-r from-slate-50 via-white to-zinc-100 ring-1 ring-slate-200 p-6 sm:p-10 text-center shadow-sm">
             <div className="mx-auto max-w-3xl">
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-green-600 via-black to-red-600 text-white shadow">
                 <Navigation className="h-6 w-6" />
               </div>
-              <h1 className="text-3xl font-extrabold tracking-tight sm:text-4xl">
+              <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-slate-900">
                 Marche autour du <span className="text-red-700">Léman</span>
               </h1>
-              <p className="mt-3 text-gray-600">
-                Une marche symbolique de solidarité, reliant les rives suisses et françaises du
-                Léman, au profit des familles de Gaza.
+              <p className="mt-3 text-slate-600">
+                Rejoignez Lyan dans sa marche à tous moment à l'aide de sa position en temps réel !
               </p>
-
-              <div className="mt-6 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ring-1 ring-black/10 bg-white/80 backdrop-blur">
-                <span
-                  className={`inline-block h-2 w-2 rounded-full ${
-                    LIVE ? "bg-green-600 animate-pulse" : "bg-red-500"
-                  }`}
-                />
-                {LIVE ? (
+              <div className="mt-5 inline-flex items-center gap-2 rounded-full px-3 py-1 text-sm font-medium ring-1 ring-slate-300 bg-white/80 backdrop-blur">
+                <span className={`inline-block h-2 w-2 rounded-full ${liveNow ? "bg-green-600 animate-pulse" : "bg-red-500"}`} />
+                {liveNow ? (
                   <span>Suivi en direct — activé</span>
                 ) : (
-                  <span>Suivi en direct inactif — activation le 25 octobre 2025 à 07h00</span>
+                  <span>Suivi en direct inactif — activation à 06h00 (heure Suisse)</span>
                 )}
               </div>
             </div>
@@ -198,159 +605,66 @@ export default function Marche() {
         </div>
       </motion.section>
 
-      {/* CARTE */}
-      <motion.section className="mx-auto max-w-7xl px-1 relative z-0" style={{ zIndex: 0 }} {...fadeUp(0.05)}>
-        <h2 className="mb-4 text-center text-2xl font-extrabold">Le parcours</h2>
+      {/* MAP */}
+      <motion.section className="mx-auto max-w-7xl px-2 sm:px-4 relative z-0" style={{ zIndex: 0 }} {...fadeUp(0.05)}>
+        <div className="flex items-center justify-between px-2 sm:px-1">
+          <h2 className="mb-4 text-center sm:text-left text-2xl font-extrabold text-slate-900">Le parcours</h2>
+          <button
+            onClick={() => setFullscreen(true)}
+            className="inline-flex items-center gap-2 rounded-xl bg-white/90 px-3 py-2 text-sm font-semibold text-slate-900 border border-slate-200 ring-1 ring-black/10 shadow hover:shadow-md"
+            aria-label="Agrandir la carte"
+          >
+            <Maximize2 className="h-4 w-4" />
+            Plein écran
+          </button>
+        </div>
 
-        <div className="relative overflow-hidden rounded-3xl border border-gray-200 bg-white shadow">
-          {/* Badge d'état */}
-          <div className="absolute left-4 top-4 z-[5]">
-            <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-sm font-medium ring-1 ring-black/10">
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-gradient-to-b from-white to-zinc-50 shadow">
+          <div className="absolute left-4 top-4 z-[20] pointer-events-none">
+            <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-sm font-medium ring-1 ring-slate-300">
               <MapPinned className="h-4 w-4 text-green-700" />
-              {LIVE ? <>Carte live — {activeCount} marcheur(s) en partage</> : <>Aperçu du trajet — live désactivé</>}
+              <span>Carte live — {activeCount} marcheur(s) en partage</span>
             </span>
           </div>
 
-                
-          <div className="relative w-full h-[60vh] md:h-[65vh] lg:h-[70vh]">
-            <MapContainer
-              center={[46.3, 6.55]}
-              zoom={9}
-              dragging={false}
-              zoomControl={false}
-              scrollWheelZoom={false}
-              doubleClickZoom={false}
-              touchZoom={false}
-              keyboard={false}
-              attributionControl={false}
-              className="absolute inset-0 rounded-2xl overflow-hidden shadow select-none pointer-events-none"
-            >
-
-
-              <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
-
-              {/* Contour précis + remplissage sobre */}
-              <Polygon
-                positions={LEMAN_OUTLINE}
-                pathOptions={{
-                  color: "#111827", // outline
-                  weight: 4,
-                  fillColor: "#9ca3af",
-                  fillOpacity: 0.28,
-                }}
-              />
-              
-
-              {/* Route en pointillés */}
-              <Polyline
-                positions={LEMAN_ROUTE}
-                pathOptions={{
-                  color: "#111827",
-                  weight: 3,
-                  opacity: 0.7,
-                  dashArray: "10 8",
-                }}
-              />
-
-              {/* Seule pastille rouge : départ Genève */}
-              <Marker position={[46.205, 6.147]} icon={startIcon}>
-                <Popup>
-                  <strong>Genève — Bains-des-Pâquis</strong>
-                  <br />
-                  Départ prévu : <strong>07h00 (sam.)</strong>
-                </Popup>
-              </Marker>
-
-              {/* Marqueurs live (affichés uniquement quand LIVE) */}
-              {LIVE &&
-                locations.map((l) => {
-                  const profile = profiles.find((p) => p.id === l.user_id);
-                  const icon = l.is_active ? activeIcon : inactiveIcon;
-                  return (
-                    <Marker key={l.user_id} position={[l.lat, l.lng]} icon={icon}>
-                      <Popup>
-                        <strong>{profile?.full_name || "Marcheur"}</strong>
-                        <br />
-                        <span
-                          className={`flex items-center gap-1 ${
-                            l.is_active ? "text-green-600" : "text-red-600"
-                          }`}
-                        >
-                          <span
-                            className={`w-2 h-2 rounded-full ${
-                              l.is_active ? "bg-green-500 animate-pulse" : "bg-red-500"
-                            }`}
-                          />
-                          {l.is_active ? "En marche" : "Inactif"}
-                        </span>
-                      </Popup>
-                    </Marker>
-                  );
-                })}
-            </MapContainer>
-          </div>
+          <MapErrorBoundary>
+            <LiveMap
+              profiles={profiles}
+              locations={locations}
+              trails={trails}
+              heightClass="h-[55vh] sm:h-[60vh] lg:h-[70vh]"
+              lyanPos={lyanPos}
+            />
+          </MapErrorBoundary>
 
           <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-green-700 via-black to-red-700" />
         </div>
 
-        <p className="mx-auto mt-3 max-w-3xl text-center text-sm text-gray-600">
-          Le tracé est indicatif. Les marqueurs apparaissent uniquement quand le suivi en direct est
-          activé.
+        <p className="mx-auto mt-3 max-w-3xl text-center text-sm text-slate-600 px-3">
+          Une marche symbolique de solidarité, reliant les rives suisses et françaises du Léman, au profit des familles de Gaza.
         </p>
       </motion.section>
 
-      
       {/* ÉTAPES */}
-      <motion.section className="mx-auto max-w-7xl px-6 pb-20 pt-12" {...fadeUp(0.08)}>
-        <h3 className="text-center text-2xl md:text-3xl font-extrabold mb-3">
+      <motion.section className="mx-auto max-w-7xl px-4 sm:px-6 pb-20 pt-10" {...fadeUp(0.08)}>
+        <h3 className="text-center text-2xl md:text-3xl font-extrabold mb-3 text-slate-900">
           Étapes et heures de passage
         </h3>
-
-        {/* Indication de défilement */}
-        <div className="flex items-center justify-center gap-2 text-gray-600 mb-4 text-sm">
-          <motion.span
-            animate={{ x: [0, 10, 0] }}
-            transition={{ repeat: Infinity, duration: 1.2, ease: "easeInOut" }}
-            className="flex items-center"
-          >
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              className="w-5 h-5 text-gray-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              strokeWidth={2}
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" />
-            </svg>
-          </motion.span>
-          <span className="font-medium text-gray-700">
-            Faites défiler horizontalement pour explorer les étapes
-          </span>
-        </div>
-
-        {/* TIMELINE défilable horizontalement */}
         <div
-          className="relative mt-6 flex overflow-x-auto space-x-5 py-6 px-2 scrollbar-thin scrollbar-thumb-gray-400 scrollbar-track-gray-100 cursor-grab"
+          className="relative mt-6 flex overflow-x-auto space-x-5 py-6 px-2 scrollbar-thin scrollbar-thumb-slate-400 scrollbar-track-slate-100 cursor-grab"
           onWheel={(e) => {
-            // autorise uniquement le défilement horizontal
-            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) {
-              e.currentTarget.scrollLeft += e.deltaX;
-            } else {
-              e.stopPropagation(); // empêche le scroll vertical d'agir ici
-            }
+            if (Math.abs(e.deltaX) > Math.abs(e.deltaY)) e.currentTarget.scrollLeft += e.deltaX;
+            else e.stopPropagation();
           }}
           onMouseDown={(e) => e.currentTarget.classList.add("grabbing")}
           onMouseUp={(e) => e.currentTarget.classList.remove("grabbing")}
           onMouseLeave={(e) => e.currentTarget.classList.remove("grabbing")}
         >
-          {/* Ligne de progression */}
           <div className="pointer-events-none absolute left-0 right-0 top-[58%] h-[2px] -z-10 bg-gradient-to-r from-green-700 via-black to-red-700 opacity-40"></div>
-
           {ETAPES.map((e, i) => (
             <motion.div
               key={i}
-              className="w-[220px] md:w-[250px] flex-shrink-0 rounded-2xl border border-gray-200 bg-white p-4 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
+              className="w-[220px] md:w-[250px] flex-shrink-0 rounded-2xl border border-slate-200 bg-white p-4 text-center shadow-sm hover:shadow-lg hover:-translate-y-1 transition-all duration-300"
               initial={{ opacity: 0, y: 8 }}
               whileInView={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.12, delay: i * 0.02 }}
@@ -359,8 +673,8 @@ export default function Marche() {
               <div className="mx-auto mb-2 flex h-9 w-9 items-center justify-center rounded-full bg-gradient-to-r from-green-700 via-black to-red-700 text-white text-sm font-semibold shadow">
                 {i + 1}
               </div>
-              <p className="font-semibold text-gray-900 text-sm md:text-base">{e.ville}</p>
-              <p className="mt-1 text-xs text-gray-500">{e.km}</p>
+              <p className="font-semibold text-slate-900 text-sm md:text-base">{e.ville}</p>
+              <p className="mt-1 text-xs text-slate-500">{e.km}</p>
               <div className="mt-2 inline-flex items-center gap-1 rounded-full bg-red-50 px-2 py-1 text-red-700 ring-1 ring-red-100">
                 <Clock className="h-4 w-4" />
                 <span className="text-sm font-medium">{e.heure}</span>
@@ -370,39 +684,83 @@ export default function Marche() {
         </div>
       </motion.section>
 
-
-
-      {/* CTA – raffiné */}
-      <motion.section className="mx-auto mb-16 max-w-7xl px-6" {...fadeUp(0.05)}>
-        <div className="rounded-3xl border border-gray-200 bg-gradient-to-br from-green-50 via-white to-red-50 p-8 text-center shadow-sm">
-          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1 ring-black/10">
+      {/* CTA */}
+      <motion.section className="mx-auto mb-16 max-w-7xl px-4 sm:px-6" {...fadeUp(0.05)}>
+        <div className="rounded-3xl border border-slate-200 bg-gradient-to-br from-slate-50 via-white to-zinc-100 p-8 text-center shadow-sm">
+          <div className="mx-auto mb-3 flex h-10 w-10 items-center justify-center rounded-xl bg-white ring-1 ring-slate-200">
             <Flag className="h-5 w-5 text-green-700" />
           </div>
-
-          {LIVE ? (
-            <p className="mx-auto max-w-2xl text-gray-700">
-              Le suivi est <strong>en direct</strong> : encouragez les marcheurs et soutenez
-              concrètement les familles de Gaza en parrainant au kilomètre.
-            </p>
-          ) : (
-            <p className="mx-auto max-w-2xl text-gray-700">
-              En attendant le jour J, vous pouvez <strong>déjà soutenir</strong> la marche en
-              parrainant un marcheur. Chaque engagement compte.
-            </p>
-          )}
-
-          {/* bouton raffiné : bordure dégradée + cœur */}
+          <p className="mx-auto max-w-2xl text-slate-700">
+            Rejoignez l’élan, soutenez et encouragez les marcheurs pendant l’évènement.
+          </p>
           <a
             href="/participer"
             className="group mt-5 inline-flex rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
           >
             <span className="inline-flex items-center gap-2 rounded-2xl bg-white px-5 py-2.5 text-sm font-semibold text-slate-900 ring-1 ring-black/5 shadow-sm group-hover:shadow-md">
               <Heart className="h-4 w-4 text-emerald-600" />
-              {LIVE ? "Parrainer pendant la marche" : "Accéder au parrainage"}
+              Participer
             </span>
           </a>
         </div>
       </motion.section>
+
+      {/* FAB Share (admin only) */}
+      {(() => {
+        const canSee = !!userId && !!ADMIN_ID && userId === ADMIN_ID;
+        if (!canSee) return null;
+        return (
+          <div className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-4 z-[999]">
+            {!sharing ? (
+              <button
+                onClick={startSharing}
+                className="inline-flex items-center gap-2 rounded-full bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 p-[2px] shadow-2xl hover:brightness-105"
+              >
+                <span className="inline-flex items-center gap-2 rounded-full bg-white px-5 py-3 text-sm font-semibold text-slate-900 ring-1 ring-black/5">
+                  <Share2 className="h-5 w-5 text-emerald-600" />
+                  Partager ma localisation
+                </span>
+              </button>
+            ) : (
+              <button
+                onClick={stopSharing}
+                className="inline-flex items-center gap-2 rounded-full bg-red-600 px-5 py-3 text-sm font-semibold text-white shadow-2xl hover:bg-red-700"
+              >
+                <StopCircle className="h-5 w-5" />
+                Arrêter le partage
+              </button>
+            )}
+          </div>
+        );
+      })()}
+
+      {/* FULLSCREEN */}
+      {fullscreen && (
+        <div className="fixed inset-0 z-[1000] bg-black/80 backdrop-blur-sm">
+          <div className="absolute inset-0 p-3 sm:p-5">
+            <div className="relative h-[calc(100dvh-1.25rem)] sm:h-[calc(100dvh-2.5rem)] rounded-2xl ring-1 ring-white/10 bg-gradient-to-b from-zinc-100/60 to-slate-200/60 overflow-hidden">
+              <button
+                onClick={() => setFullscreen(false)}
+                className="absolute right-3 top-3 z-[1010] inline-flex items-center gap-2 rounded-xl bg-white px-3 py-2 text-sm font-semibold text-slate-900 border border-slate-300 ring-1 ring-black/10 shadow hover:shadow-md"
+              >
+                <X className="h-4 w-4" />
+                Fermer
+              </button>
+              <div className="absolute inset-0 p-2 sm:p-3">
+                <MapErrorBoundary>
+                  <LiveMap
+                    profiles={profiles}
+                    locations={locations}
+                    trails={trails}
+                    heightClass="h-full"
+                    lyanPos={lyanPos}
+                  />
+                </MapErrorBoundary>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
