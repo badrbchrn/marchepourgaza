@@ -48,7 +48,7 @@ const DIST_DB_WRITE_M     = 50;    // écriture DB
 const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
 
 /* IMPORTANT: break long jumps so we don't draw a straight line over big gaps */
-const GAP_BREAK_M = 4000; // si 2 points consécutifs sont distants de > 200 m, on coupe le trait
+const GAP_BREAK_M = 10000; // si 2 points consécutifs sont distants de > 200 m, on coupe le trait
 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
