@@ -209,7 +209,7 @@ export default function Home() {
               className="mt-2 md:mt-0 md:absolute md:-top-12 md:left-0 md:right-0"
             >
               <Link
-                to="/signup"
+                to="/login"
                 className="group block w-full md:max-w-xl mx-auto md:mx-0"
                 aria-label="Créer un compte pour interagir"
               >
