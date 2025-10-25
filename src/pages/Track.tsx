@@ -48,7 +48,7 @@ const DIST_DB_WRITE_M     = 50;    // écriture DB
 const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
 
 /* IMPORTANT: break long jumps so we don't draw a straight line over big gaps */
-const GAP_BREAK_M = 2000; // si 2 points consécutifs sont distants de > 2 km, on coupe le trait
+const GAP_BREAK_M = 4000; // si 2 points consécutifs sont distants de > 200 m, on coupe le trait
 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
@@ -429,10 +429,15 @@ export default function Marche() {
 
     ch.on("broadcast", { event: "point" }, ({ payload }) => {
       const { user_id, lat, lng } = payload as { user_id: string; lat: number; lng: number };
+
+      // ignore bad coordinates
+      if ((lat === 0 && lng === 0) || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
+
       setTrails((prev) => {
         const t = prev[user_id] || [];
         const p: [number, number] = [lat, lng];
         const last = t[t.length - 1];
+        // append only if moved a bit (visual smoothing)
         if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
           return { ...prev, [user_id]: [...t, p].slice(-TRAIL_MAX_POINTS) };
         }
@@ -473,28 +478,26 @@ export default function Marche() {
         .gte("updated_at", since)
         .order("updated_at", { ascending: true });
 
-      // --- FIX: rebuild trails FROM SCRATCH each time to avoid zig-zag lines ---
+      // --- rebuild trails FROM SCRATCH (as you had) + filter (0,0) rows ---
       const grouped: Record<string, [number, number][]> = {};
-      for (const row of recents || []) {
+      for (const row of (recents || [])) {
+        if (row.lat === 0 && row.lng === 0) continue; // ignore bad row
         const p: [number, number] = [row.lat, row.lng];
         const arr = grouped[row.user_id] || (grouped[row.user_id] = []);
         const last = arr[arr.length - 1];
-        if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
-          arr.push(p);
-        }
+        if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) arr.push(p);
         lastDbPointRef.current[row.user_id] = p;
       }
-      // slice to cap memory
       Object.keys(grouped).forEach((uid) => {
-        if (grouped[uid].length > TRAIL_MAX_POINTS) {
-          grouped[uid] = grouped[uid].slice(-TRAIL_MAX_POINTS);
-        }
+        if (grouped[uid].length > TRAIL_MAX_POINTS) grouped[uid] = grouped[uid].slice(-TRAIL_MAX_POINTS);
       });
       setTrails(grouped);
 
-      // also compute the latest location per user for markers
+      // latest location per user for markers (filter 0,0 as well)
       const latestMap = new Map<string, LocationRow>();
-      (recents || []).forEach((r) => latestMap.set(r.user_id, r));
+      (recents || [])
+        .filter((r) => !(r.lat === 0 && r.lng === 0))
+        .forEach((r) => latestMap.set(r.user_id, r));
       setLocations(Array.from(latestMap.values()));
     };
 
