@@ -42,13 +42,13 @@ const ADMIN_ID = ((import.meta as any).env?.VITE_LYAN_ID as string | undefined)?
 const ADMIN_LABEL = "Lyan";
 
 /* ======================== DISTANCES / INTERVALS (PROD) ======================== */
-const DIST_TRAIL_APPEND_M = 20;   // adoucir le trait visuel
-const DIST_BROADCAST_M    = 50;   // diffusion realtime
-const DIST_DB_WRITE_M     = 50;   // écriture DB
+const DIST_TRAIL_APPEND_M = 20;    // adoucir le trait visuel
+const DIST_BROADCAST_M    = 50;    // diffusion realtime
+const DIST_DB_WRITE_M     = 50;    // écriture DB
 const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
 
 /* IMPORTANT: break long jumps so we don't draw a straight line over big gaps */
-const GAP_BREAK_M = 2000; // if two consecutive points are > 300 m apart, start a new segment
+const GAP_BREAK_M = 2000; // si 2 points consécutifs sont distants de > 2 km, on coupe le trait
 
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
@@ -107,7 +107,7 @@ export const makeGazaProPin = (label = "Lyan") =>
             <stop offset="0%" stop-color="#FFFFFF" stop-opacity=".65"/>
             <stop offset="100%" stop-color="#D1D5DB" stop-opacity=".85"/>
           </linearGradient>
-          <filter id="softDrop" x="-40%" y="-40%" width="180%" height="180%">
+          <filter id="softDrop" x="-40%" y="-40%" width="180%">
             <feOffset dy="2"/>
             <feGaussianBlur stdDeviation="3"/>
             <feColorMatrix type="matrix"
@@ -189,9 +189,7 @@ function splitIntoSegments(
     const p = points[i];
     const d = haversine(prev, p);
     if (d > gapMeters) {
-      // close current if it has at least 2 points
       if (current.length > 1) segs.push(current);
-      // start a fresh segment from this point
       current = [p];
     } else {
       current.push(p);
@@ -201,7 +199,7 @@ function splitIntoSegments(
   return segs;
 }
 
-/* ======================== Focus (TOP-CENTER) ======================== */
+/* ======================== Focus helpers ======================== */
 function FocusLyanButton({ lyanPos }: { lyanPos: [number, number] | null }) {
   const map = useMap();
   return (
@@ -225,6 +223,19 @@ function FocusLyanButton({ lyanPos }: { lyanPos: [number, number] | null }) {
       </button>
     </div>
   );
+}
+
+/** Auto-center once when Lyan’s position becomes available (also when fullscreen map mounts) */
+function AutoCenter({ target, zoom = 16 }: { target: [number, number] | null; zoom?: number }) {
+  const map = useMap();
+  const did = useRef(false);
+  useEffect(() => {
+    if (!did.current && target) {
+      map.flyTo(target, Math.max(17, zoom), { duration: 0.8 });
+      did.current = true;
+    }
+  }, [target, zoom, map]);
+  return null;
 }
 
 /* ======================== Error Boundary ======================== */
@@ -343,6 +354,8 @@ function LiveMap({
           );
         })}
 
+        {/* Auto-focus on Lyan once loaded */}
+        <AutoCenter target={lyanPos} zoom={16} />
         <FocusLyanButton lyanPos={lyanPos} />
       </MapContainer>
     </div>
@@ -460,23 +473,29 @@ export default function Marche() {
         .gte("updated_at", since)
         .order("updated_at", { ascending: true });
 
+      // --- FIX: rebuild trails FROM SCRATCH each time to avoid zig-zag lines ---
+      const grouped: Record<string, [number, number][]> = {};
+      for (const row of recents || []) {
+        const p: [number, number] = [row.lat, row.lng];
+        const arr = grouped[row.user_id] || (grouped[row.user_id] = []);
+        const last = arr[arr.length - 1];
+        if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
+          arr.push(p);
+        }
+        lastDbPointRef.current[row.user_id] = p;
+      }
+      // slice to cap memory
+      Object.keys(grouped).forEach((uid) => {
+        if (grouped[uid].length > TRAIL_MAX_POINTS) {
+          grouped[uid] = grouped[uid].slice(-TRAIL_MAX_POINTS);
+        }
+      });
+      setTrails(grouped);
+
+      // also compute the latest location per user for markers
       const latestMap = new Map<string, LocationRow>();
       (recents || []).forEach((r) => latestMap.set(r.user_id, r));
       setLocations(Array.from(latestMap.values()));
-
-      setTrails((prev) => {
-        const next = { ...prev };
-        for (const row of recents || []) {
-          const p: [number, number] = [row.lat, row.lng];
-          const t = next[row.user_id] || [];
-          const last = t[t.length - 1];
-          if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
-            next[row.user_id] = [...t, p].slice(-TRAIL_MAX_POINTS);
-            lastDbPointRef.current[row.user_id] = p;
-          }
-        }
-        return next;
-      });
     };
 
     fetchData();
