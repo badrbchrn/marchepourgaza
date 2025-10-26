@@ -27,7 +27,7 @@ import L from "leaflet";
 
 /* ======================== LIVE CONFIG ======================== */
 /** Live ON si on est après 06:00 (heure de Zurich) le jour courant */
-const FORCE_LIVE = (import.meta as any).env?.VITE_FORCE_LIVE === "1";
+const FORCE_LIVE = 1;//(import.meta as any).env?.VITE_FORCE_LIVE === "1";
 const nowZurich = () =>
   new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Zurich" }));
 const liveIsOnNow = () => {
