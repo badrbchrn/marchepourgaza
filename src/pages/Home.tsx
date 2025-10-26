@@ -13,6 +13,7 @@ import {
   UserPlus,
   LogIn,
   X,
+  ShieldCheck,
   Radio,
 } from "lucide-react";
 import { motion } from "framer-motion";
@@ -249,7 +250,7 @@ export default function Home() {
           >
             <KPI value={profiles.length} label="Participants" tone="ink" />
             <KPI value={sponsorshipCount} label="Parrainages validés" tone="success" />
-            <KPI value={waitingCount} label="Sans parrains" tone="warning" />
+            <KPI value={waitingCount} label="Sans parrins" tone="warning" />
           </motion.div>
 
           {/* Total (public) */}
@@ -616,6 +617,34 @@ function LiveWeekendPopup({ onClose }: { onClose: () => void }) {
               Plus tard
             </button>
           </div>
+
+          {/* --- Bloc TWINT minimal --- */}
+          <div className="mt-5">
+            <div className="h-px w-full bg-slate-200" />
+
+            <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+              <h4 className="text-sm font-semibold text-gray-900 text-center">
+                Après la marche : donner directement via TWINT
+              </h4>
+
+              <div className="mt-3 flex justify-center">
+                <a
+                  href="https://pay.raisenow.io/msgxh?lng=fr"
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white
+                            shadow hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-emerald-400/60
+                            bg-gradient-to-r from-red-600 via-black to-green-600"
+                  aria-label="Donner via TWINT (ouvre une nouvelle fenêtre)"
+                >
+                  <HeartHandshake className="h-4 w-4" />
+                  Donner via TWINT
+                </a>
+              </div>
+            </div>
+          </div>
+          {/* --- fin bloc --- */}
+
         </div>
       </motion.div>
     </div>
