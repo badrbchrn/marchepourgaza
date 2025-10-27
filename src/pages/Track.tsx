@@ -1,4 +1,4 @@
-// src/pages/Track.tsx — PROD (activation auto à 06:00 Europe/Zurich, maj tous les 50 m)
+// src/pages/Track.tsx — LIVE désactivé (historique uniquement)
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { supabase } from "@/lib/supabaseClient";
@@ -25,9 +25,11 @@ import {
 import "leaflet/dist/leaflet.css";
 import L from "leaflet";
 
+/* ======================== FEATURE FLAG ======================== */
+/** Mettre sur true pour réactiver tout le live (broadcast, présence, uploads, polling). */
+const LIVE_ENABLED = false;
+
 /* ======================== LIVE CONFIG ======================== */
-/** Live ON si on est après 06:00 (heure de Zurich) le jour courant */
-const FORCE_LIVE = 1;//(import.meta as any).env?.VITE_FORCE_LIVE === "1";
 const nowZurich = () =>
   new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Zurich" }));
 const liveIsOnNow = () => {
@@ -42,14 +44,14 @@ const ADMIN_ID = ((import.meta as any).env?.VITE_LYAN_ID as string | undefined)?
 const ADMIN_LABEL = "Lyan";
 
 /* ======================== DISTANCES / INTERVALS (PROD) ======================== */
-const DIST_TRAIL_APPEND_M = 20;    // adoucir le trait visuel
-const DIST_BROADCAST_M    = 50;    // diffusion realtime
-const DIST_DB_WRITE_M     = 50;    // écriture DB
+const DIST_TRAIL_APPEND_M = 20;     // adoucir le trait visuel
+const DIST_BROADCAST_M    = 50;     // diffusion realtime
+const DIST_DB_WRITE_M     = 50;     // écriture DB
 const UPLOAD_MIN_INTERVAL_MS = 3000; // anti-spam DB
 
-/* IMPORTANT: break long jumps so we don't draw a straight line over big gaps */
-const GAP_BREAK_M = 30000; // si 2 points consécutifs sont distants de > 30 km, on coupe le trait (tu avais mis cette valeur)
- 
+/* IMPORTANT: couper les grands «sauts» pour ne pas tirer des lignes droites */
+const GAP_BREAK_M = 30000; // 30 km
+
 /* ======================== ÉTAPES ======================== */
 const ETAPES = [
   { ville: "Genève (Bains-des-Pâquis)", km: "0 km", heure: "07h00 (sam.)" },
@@ -299,7 +301,7 @@ function LiveMap({
         center={lyanPos || [46.21, 6.15]}
         zoom={16}
         minZoom={5}
-        maxZoom={19}          // limite pour éviter 400 OSM
+        maxZoom={19}
         zoomControl={true}
         attributionControl={false}
         className="absolute inset-0 rounded-2xl overflow-hidden shadow bg-[#eef1f5]"
@@ -311,7 +313,7 @@ function LiveMap({
           updateWhenIdle
         />
 
-        {/* Draw trails but break them on large gaps */}
+        {/* Tracés (coupés sur grands gaps) */}
         {Object.entries(trails).map(([uid, points]) => {
           const segments = splitIntoSegments(points, GAP_BREAK_M);
           const isAdmin = uid === ADMIN_ID;
@@ -354,7 +356,7 @@ function LiveMap({
           );
         })}
 
-        {/* Auto-focus on Lyan once loaded */}
+        {/* Auto-focus sur Lyan quand dispo */}
         <AutoCenter target={lyanPos} zoom={16} />
         <FocusLyanButton lyanPos={lyanPos} />
       </MapContainer>
@@ -364,11 +366,13 @@ function LiveMap({
 
 /* ======================== PAGE ======================== */
 export default function Marche() {
-  const [liveNow, setLiveNow] = useState(FORCE_LIVE || liveIsOnNow());
+  // Avec LIVE désactivé, on affiche toujours « inactif »
+  const [liveNow, setLiveNow] = useState<boolean>(LIVE_ENABLED ? liveIsOnNow() : false);
 
-  // met à jour le statut LIVE au changement d’heure locale (Zurich)
+  // Si on réactive le live un jour, cet interval re-fonctionnera
   useEffect(() => {
-    const t = setInterval(() => setLiveNow(FORCE_LIVE || liveIsOnNow()), 30_000);
+    if (!LIVE_ENABLED) return;
+    const t = setInterval(() => setLiveNow(liveIsOnNow()), 30_000);
     return () => clearInterval(t);
   }, []);
 
@@ -390,7 +394,7 @@ export default function Marche() {
   const rtChannelRef = useRef<ReturnType<typeof supabase.channel> | null>(null);
   const presencePointsRef = useRef<[number, number][]>([]);
 
-  // Wake Lock pour garder l'écran éveillé pendant le partage
+  // Wake Lock
   const wakeRef = useRef<any>(null);
   async function enableWakeLock() {
     try {
@@ -421,23 +425,22 @@ export default function Marche() {
     return () => sub?.subscription.unsubscribe();
   }, []);
 
-  /* Realtime channel (broadcast + presence) */
+  /* Realtime channel (broadcast + presence) — désactivé si LIVE off */
   useEffect(() => {
+    if (!LIVE_ENABLED) return;
+
     const ch = supabase.channel("lyan-track", {
       config: { presence: { key: "viewer-" + Math.random().toString(36).slice(2) } },
     });
 
     ch.on("broadcast", { event: "point" }, ({ payload }) => {
       const { user_id, lat, lng } = payload as { user_id: string; lat: number; lng: number };
-
-      // ignore bad coordinates
       if ((lat === 0 && lng === 0) || !Number.isFinite(lat) || !Number.isFinite(lng)) return;
 
       setTrails((prev) => {
         const t = prev[user_id] || [];
         const p: [number, number] = [lat, lng];
         const last = t[t.length - 1];
-        // append only if moved a bit (visual smoothing)
         if (!last || haversine(last, p) > DIST_TRAIL_APPEND_M) {
           return { ...prev, [user_id]: [...t, p].slice(-TRAIL_MAX_POINTS) };
         }
@@ -465,22 +468,21 @@ export default function Marche() {
     };
   }, []);
 
-  /* Initial fetch + polling + realtime DB */
+  /* Initial fetch — historique seulement ; polling/RT DB seulement si LIVE on */
   useEffect(() => {
     const fetchData = async () => {
       const { data: profilesData } = await supabase.from("profiles").select("id, full_name");
       setProfiles(profilesData || []);
 
-      // IMPORTANT: plus de filtre temporel — on récupère TOUT l'historique et on ordonne
+      // On récupère tout l'historique et on ordonne
       const { data: recents } = await supabase
         .from("locations")
         .select("user_id, lat, lng, is_active, updated_at, accuracy, created_at")
         .order("updated_at", { ascending: true });
 
-      // rebuild trails FROM SCRATCH + filtre (0,0)
       const grouped: Record<string, [number, number][]> = {};
       for (const row of (recents || [])) {
-        if (row.lat === 0 && row.lng === 0) continue; // ignore bad row
+        if (row.lat === 0 && row.lng === 0) continue;
         const p: [number, number] = [row.lat, row.lng];
         const arr = grouped[row.user_id] || (grouped[row.user_id] = []);
         const last = arr[arr.length - 1];
@@ -492,7 +494,7 @@ export default function Marche() {
       });
       setTrails(grouped);
 
-      // latest location per user for markers (filter 0,0 as well)
+      // Dernière position par utilisateur pour les marqueurs
       const latestMap = new Map<string, LocationRow>();
       (recents || [])
         .filter((r) => !(r.lat === 0 && r.lng === 0))
@@ -501,6 +503,8 @@ export default function Marche() {
     };
 
     fetchData();
+
+    if (!LIVE_ENABLED) return;
 
     const ch = supabase
       .channel("realtime-locations")
@@ -522,8 +526,12 @@ export default function Marche() {
     return row ? [row.lat, row.lng] : null;
   }, [locations]);
 
-  /* Start/Stop sharing (PROD: 50 m) */
+  /* Start/Stop sharing — no-op si LIVE off */
   const startSharing = async () => {
+    if (!LIVE_ENABLED) {
+      alert("Le suivi en direct est désactivé pour le moment.");
+      return;
+    }
     if (!canSeeShareButton) return;
     if (!("geolocation" in navigator)) {
       alert("La géolocalisation n’est pas disponible sur cet appareil.");
@@ -542,7 +550,6 @@ export default function Marche() {
         const coords: [number, number] = [pos.coords.latitude, pos.coords.longitude];
         const accuracy = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : null;
 
-        // Traînée locale (20 m) + broadcast à 50 m
         setTrails((prev) => {
           const t = prev[userId!] || [];
           const last = t[t.length - 1];
@@ -550,7 +557,6 @@ export default function Marche() {
           if (shouldAppend) {
             const updated = [...t, coords].slice(-TRAIL_MAX_POINTS);
             presencePointsRef.current = updated.slice(-600);
-            // Broadcast si distance >= 50 m depuis le dernier broadcast
             const lastB = lastBroadcastRef.current[userId!];
             if (!lastB || haversine(lastB, coords) >= DIST_BROADCAST_M) {
               rtChannelRef.current?.track({ user_id: userId!, points: presencePointsRef.current });
@@ -566,7 +572,6 @@ export default function Marche() {
           return prev;
         });
 
-        // Insert DB si >= 50 m + intervalle OK
         const now = Date.now();
         const lastDb = lastDbPointRef.current[userId!];
         const movedEnough = !lastDb || haversine(lastDb, coords) >= DIST_DB_WRITE_M;
@@ -595,6 +600,7 @@ export default function Marche() {
   };
 
   const stopSharing = async () => {
+    if (!LIVE_ENABLED) return;
     setSharing(false);
     releaseWakeLock();
     if (watchIdRef.current != null) {
@@ -636,7 +642,6 @@ export default function Marche() {
               <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-r from-green-600 via-black to-red-600 text-white shadow">
                 <Navigation className="h-6 w-6" />
               </div>
-              {/* Title optimized for phones: clamp + line-balance + explicit mobile break */}
               <h1 className="text-balance leading-tight tracking-tight font-extrabold text-[clamp(22px,6.2vw,40px)] text-slate-900">
                 <span className="sm:inline block">Marche autour du</span>{" "}
                 <span className="text-red-700">Léman</span>
@@ -646,10 +651,10 @@ export default function Marche() {
               </p>
               <div className="mt-5 inline-flex items-center gap-2 rounded-full px-3 py-1 text-[clamp(11px,3.4vw,14px)] font-medium ring-1 ring-slate-300 bg-white/80 backdrop-blur">
                 <span className={`inline-block h-2 w-2 rounded-full ${liveNow ? "bg-green-600 animate-pulse" : "bg-red-500"}`} />
-                {liveNow ? (
+                {LIVE_ENABLED && liveNow ? (
                   <span>Suivi en direct — activé</span>
                 ) : (
-                  <span className="text-balance">Suivi inactif — activation à 06h00 (heure Suisse)</span>
+                  <span className="text-balance">Suivi en direct — désactivé</span>
                 )}
               </div>
             </div>
@@ -677,7 +682,7 @@ export default function Marche() {
           <div className="absolute left-4 top-4 z-[20] pointer-events-none">
             <span className="inline-flex items-center gap-2 rounded-full bg-white/90 px-3 py-1 text-[clamp(11px,3.4vw,13px)] font-medium ring-1 ring-slate-300">
               <MapPinned className="h-4 w-4 text-green-700" />
-              <span className="text-balance">Carte live — {activeCount} marcheur(s) en partage</span>
+              <span className="text-balance">Carte (historique) — {activeCount} marcheur(s)</span>
             </span>
           </div>
 
@@ -761,9 +766,9 @@ export default function Marche() {
         </div>
       </motion.section>
 
-      {/* FAB Share (admin only) */}
+      {/* FAB Share (admin only) — masqué si LIVE off */}
       {(() => {
-        const canSee = !!userId && !!ADMIN_ID && userId === ADMIN_ID;
+        const canSee = LIVE_ENABLED && !!userId && !!ADMIN_ID && userId === ADMIN_ID;
         if (!canSee) return null;
         return (
           <div className="fixed bottom-[calc(16px+env(safe-area-inset-bottom))] right-4 z-[999]">
