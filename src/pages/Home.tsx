@@ -13,29 +13,25 @@ import {
   UserPlus,
   LogIn,
   X,
-  ShieldCheck,
   Radio,
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useEffect, useState, useCallback } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
-/* ---------------- Config / Helpers pop-up ---------------- */
-// URL de la page “live” (à adapter si besoin)
+/* ---------------- Config ---------------- */
+// URL de la page “live” (conservé si tu veux garder le lien)
 const LIVE_URL = "/track";
 
-// Optionnel : restreindre à une plage de dates précises (YYYY-MM-DD)
-// Laisser à null pour activer tous les week-ends.
-const EVENT_START: string | null = null; // ex: "2025-10-25"
-const EVENT_END: string | null = null;   // ex: "2025-10-26"
-
+// (Conservé de l’ancienne logique – non utilisé maintenant, mais laissé pour ne rien casser)
+const EVENT_START: string | null = null;
+const EVENT_END: string | null = null;
 function isWeekend(now = new Date()): boolean {
-  // 0 = dimanche, 6 = samedi
   const dow = now.getDay();
   return dow === 6 || dow === 0;
 }
 function inEventRange(now = new Date()): boolean {
-  if (!EVENT_START || !EVENT_END) return true; // pas de borne => actif tous les week-ends
+  if (!EVENT_START || !EVENT_END) return true;
   const y = now.getFullYear();
   const m = String(now.getMonth() + 1).padStart(2, "0");
   const d = String(now.getDate()).padStart(2, "0");
@@ -69,7 +65,10 @@ export default function Home() {
   const [pendingMine, setPendingMine] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // ---- État : pop-up live du week-end (chaque refresh)
+  // ---- Potentiel (parrain) pour l’utilisateur connecté
+  const [sponsorPotential, setSponsorPotential] = useState<number | null>(null);
+
+  // ---- Pop-up (toujours affiché maintenant, au chargement)
   const [showLivePopup, setShowLivePopup] = useState(false);
 
   useEffect(() => {
@@ -122,7 +121,7 @@ export default function Home() {
         setTotalFunds(0);
       }
 
-      // Auth + demandes "pending"
+      // Auth + demandes "pending" + potentiel perso (parrain)
       const { data: authUser } = await supabase.auth.getUser();
       const uid = authUser?.user?.id;
       setIsLoggedIn(!!uid);
@@ -134,23 +133,34 @@ export default function Home() {
           .eq("status", "pending")
           .or(`runner_id.eq.${uid},sponsor_id.eq.${uid}`);
         setPendingMine(pend || 0);
+
+        // Potentiel du parrain connecté (Σ pledge_per_km × expected_km des parrainages ACCEPTÉS)
+        const { data: mine } = await supabase
+          .from("sponsorships")
+          .select("pledge_per_km, runner:runner_id ( expected_km )")
+          .eq("status", "accepted")
+          .eq("sponsor_id", uid);
+
+        const myTotal = (mine || []).reduce((sum: number, s: any) => {
+          const pledge = Number(s?.pledge_per_km) || 0;
+          const km = Number(s?.runner?.expected_km) || 0;
+          const line = pledge * km;
+          return sum + (Number.isFinite(line) ? line : 0);
+        }, 0);
+
+        setSponsorPotential(Math.round(myTotal * 100) / 100);
       } else {
         setPendingMine(0);
+        setSponsorPotential(null);
       }
     };
 
     fetchData();
   }, []);
 
-  // ---- Affichage pop-up à CHAQUE refresh du week-end (ou ?live=1)
+  // Afficher la pop-up de conclusion à chaque rafraîchissement
   useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const forced = params.get("live") === "1";
-    if (forced || (isWeekend() && inEventRange())) {
-      setShowLivePopup(true);
-    } else {
-      setShowLivePopup(false);
-    }
+    setShowLivePopup(true);
   }, []);
 
   const closePopup = useCallback(() => {
@@ -171,7 +181,7 @@ export default function Home() {
           variants={fadeUp}
           className="relative flex-1 md:pr-12 text-center md:text-left space-y-5"
         >
-          {/* 🔔 Banner inside hero: mobile in-flow, md absolute above the heading */}
+          {/* 🔔 Banner inside hero */}
           {isLoggedIn && pendingMine > 0 && (
             <motion.div
               initial={{ opacity: 0, y: -6 }}
@@ -250,7 +260,7 @@ export default function Home() {
           >
             <KPI value={profiles.length} label="Participants" tone="ink" />
             <KPI value={sponsorshipCount} label="Parrainages validés" tone="success" />
-            <KPI value={waitingCount} label="Sans parrins" tone="warning" />
+            <KPI value={waitingCount} label="Sans parrains" tone="warning" />
           </motion.div>
 
           {/* Total (public) */}
@@ -264,7 +274,6 @@ export default function Home() {
 
           {/* CTA principal (Participer + S'inscrire) */}
           <div className="pt-1.5 flex items-center gap-3 justify-center md:justify-start">
-            {/* Participer */}
             <Link
               to="/participer"
               className="group inline-flex items-center gap-2 rounded-2xl p-[1.5px] bg-gradient-to-r from-emerald-600 via-gray-900 to-rose-600 hover:brightness-105 transition"
@@ -276,7 +285,6 @@ export default function Home() {
               </span>
             </Link>
 
-            {/* S'inscrire → seulement si pas connecté */}
             {!isLoggedIn && (
               <Link
                 to="/signup"
@@ -486,8 +494,14 @@ export default function Home() {
         </div>
       </motion.section>
 
-      {/* --------- POP-UP “Marche en cours” (week-end, chaque refresh) --------- */}
-      {showLivePopup && <LiveWeekendPopup onClose={closePopup} />}
+      {/* --------- POP-UP de CONCLUSION (toujours) --------- */}
+      {showLivePopup && (
+        <ConclusionPopup
+          onClose={closePopup}
+          isLoggedIn={isLoggedIn}
+          sponsorPotential={sponsorPotential}
+        />
+      )}
     </div>
   );
 }
@@ -547,8 +561,16 @@ function SectionDivider({ color }: { color: "gaza" | "gray" }) {
   return <div className="h-px w-full bg-gray-200" />;
 }
 
-/* ---------------- Pop-up component ---------------- */
-function LiveWeekendPopup({ onClose }: { onClose: () => void }) {
+/* ---------------- Pop-up de conclusion ---------------- */
+function ConclusionPopup({
+  onClose,
+  isLoggedIn,
+  sponsorPotential,
+}: {
+  onClose: () => void;
+  isLoggedIn: boolean;
+  sponsorPotential: number | null;
+}) {
   // Échappe avec la touche Échap
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
@@ -563,7 +585,7 @@ function LiveWeekendPopup({ onClose }: { onClose: () => void }) {
       className="fixed inset-0 z-[999] flex items-center justify-center p-4"
       role="dialog"
       aria-modal="true"
-      aria-labelledby="live-title"
+      aria-labelledby="final-title"
       onClick={onClose}
     >
       {/* Overlay */}
@@ -584,8 +606,8 @@ function LiveWeekendPopup({ onClose }: { onClose: () => void }) {
               <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-green-600 via-black to-red-600 grid place-items-center">
                 <Radio className="h-5 w-5 text-white" />
               </div>
-              <h3 id="live-title" className="text-lg font-extrabold text-gray-900">
-                Marche en cours — Suivi en direct
+              <h3 id="final-title" className="text-lg font-extrabold text-gray-900">
+                La marche est terminée
               </h3>
             </div>
             <button
@@ -597,54 +619,59 @@ function LiveWeekendPopup({ onClose }: { onClose: () => void }) {
             </button>
           </div>
 
+          {/* Message principal */}
           <p className="mt-3 text-sm text-gray-700 leading-snug">
-            Le live est activé pour le week-end. Suivez la progression des marcheurs en temps réel.
+            Lyan a marché <strong>172 km</strong> en <strong>45h</strong> sans s’arrêter. Un immense merci
+            à toutes et tous pour votre participation et votre soutien ❤️🇵🇸
           </p>
 
-          <div className="mt-4 flex flex-col sm:flex-row gap-2.5">
-            <Link
-              to={LIVE_URL}
-              className="flex-1 inline-flex items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-green-700 via-black to-red-700 px-4 py-2.5 text-sm font-semibold text-white shadow hover:brightness-110"
-              onClick={onClose}
-            >
-              Voir le suivi en direct
-              <ArrowRight className="h-4 w-4 opacity-90" />
-            </Link>
-            <button
-              onClick={onClose}
-              className="inline-flex items-center justify-center rounded-xl px-4 py-2.5 text-sm font-semibold text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50"
-            >
-              Plus tard
-            </button>
-          </div>
-
-          {/* --- Bloc TWINT minimal --- */}
-          <div className="mt-5">
-            <div className="h-px w-full bg-slate-200" />
-
-            <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
-              <h4 className="text-sm font-semibold text-gray-900 text-center">
-                Après la marche : donner directement via TWINT
-              </h4>
-
-              <div className="mt-3 flex justify-center">
-                <a
-                  href="https://pay.raisenow.io/msgxh?lng=fr"
-                  target="_blank"
-                  rel="noreferrer"
-                  className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white
-                            shadow hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-emerald-400/60
-                            bg-gradient-to-r from-red-600 via-black to-green-600"
-                  aria-label="Donner via TWINT (ouvre une nouvelle fenêtre)"
-                >
-                  <HeartHandshake className="h-4 w-4" />
-                  Donner via TWINT
-                </a>
+          {/* Bloc potentiel parrain */}
+          <div className="mt-4 rounded-2xl border border-slate-200 bg-white px-4 py-4">
+            {isLoggedIn ? (
+              <div className="text-center">
+                <div className="text-xs font-semibold text-gray-900/80 tracking-wide">
+                  Votre potentiel (parrain)
+                </div>
+                <div className="mt-1 text-2xl font-extrabold text-emerald-700">
+                  {formatCHF(Number(sponsorPotential || 0))}
+                </div>
+                <div className="mt-1 text-[11.5px] text-gray-500">
+                  Calculé sur vos parrainages acceptés.
+                </div>
               </div>
+            ) : (
+              <div className="text-center text-sm text-gray-700">
+                <strong>Connectez-vous</strong> pour voir le montant à donner selon vos parrainages.
+              </div>
+            )}
+
+            {/* Bouton TWINT centré */}
+            <div className="mt-4 flex justify-center">
+              <a
+                href="https://pay.raisenow.io/msgxh?lng=fr"
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-semibold text-white
+                          shadow hover:brightness-110 focus:outline-none focus:ring-2 focus:ring-emerald-400/60
+                          bg-gradient-to-r from-red-600 via-black to-green-600"
+                aria-label="Donner via TWINT (ouvre une nouvelle fenêtre)"
+              >
+                <HeartHandshake className="h-4 w-4" />
+                Donner via TWINT
+              </a>
             </div>
           </div>
-          {/* --- fin bloc --- */}
 
+          {/* Lien secondaire (facultatif) */}
+          <div className="mt-3 flex justify-center">
+            <Link
+              to={LIVE_URL}
+              className="text-xs font-medium text-slate-600 hover:text-slate-900 underline underline-offset-2"
+              onClick={onClose}
+            >
+              Voir le parcours & les infos
+            </Link>
+          </div>
         </div>
       </motion.div>
     </div>
