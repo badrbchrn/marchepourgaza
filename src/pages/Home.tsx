@@ -23,7 +23,7 @@ import { supabase } from "@/lib/supabaseClient";
 // URL de la page “live” (conservé si tu veux garder le lien)
 const LIVE_URL = "/track";
 
-// (Conservé de l’ancienne logique – non utilisé maintenant, mais laissé pour ne rien casser)
+// (Conservé – pas utilisé maintenant, mais laissé pour ne rien casser)
 const EVENT_START: string | null = null;
 const EVENT_END: string | null = null;
 function isWeekend(now = new Date()): boolean {
@@ -65,97 +65,124 @@ export default function Home() {
   const [pendingMine, setPendingMine] = useState(0);
   const [isLoggedIn, setIsLoggedIn] = useState(false);
 
-  // ---- Potentiel (parrain) pour l’utilisateur connecté
+  // Potentiel (parrain) pour l’utilisateur connecté
   const [sponsorPotential, setSponsorPotential] = useState<number | null>(null);
 
-  // ---- Pop-up (toujours affiché maintenant, au chargement)
+  // Pop-up (toujours affiché maintenant, au chargement)
   const [showLivePopup, setShowLivePopup] = useState(false);
 
   useEffect(() => {
+    let cancelled = false;
+
     const fetchData = async () => {
-      // Profils (public)
-      const { data: profilesData } = await supabase
-        .from("profiles")
-        .select("id, role, full_name, city")
-        .not("full_name", "is", null);
-      setProfiles(profilesData || []);
+      // Lancer un max de requêtes en parallèle
+      const [
+        profilesRes,
+        acceptedCountRes,
+        allRunnersRes,
+        sponsoredRunnersRes,
+        totalRowsRes,
+        authRes,
+      ] = await Promise.all([
+        supabase.from("profiles")
+          .select("id, role, full_name, city")
+          .not("full_name", "is", null),
 
-      // Parrainages acceptés (public)
-      const { count: accepted } = await supabase
-        .from("sponsorships")
-        .select("*", { count: "exact", head: true })
-        .eq("status", "accepted");
-      setSponsorshipCount(accepted || 0);
-
-      // Marcheurs sans parrain (nom + prénom requis)
-      const { data: allRunners } = await supabase
-        .from("profiles")
-        .select("id, full_name")
-        .eq("role", "runner")
-        .not("full_name", "is", null);
-
-      const { data: sponsoredRunners } = await supabase
-        .from("sponsorships")
-        .select("runner_id")
-        .eq("status", "accepted");
-
-      const sponsoredSet = new Set((sponsoredRunners || []).map((r) => r.runner_id));
-      const waiting = (allRunners || []).filter((r) => !sponsoredSet.has(r.id));
-      setWaitingCount(waiting.length);
-
-      // Total potentiel public : Σ (pledge_per_km × expected_km)
-      const { data: rows } = await supabase
-        .from("sponsorships")
-        .select("pledge_per_km, runner:runner_id ( expected_km )")
-        .eq("status", "accepted");
-
-      if (rows) {
-        const total = rows.reduce((sum: number, s: any) => {
-          const pledge = Number(s?.pledge_per_km) || 0;
-          const km = Number(s?.runner?.expected_km) || 0;
-          const line = pledge * km;
-          return sum + (Number.isFinite(line) ? line : 0);
-        }, 0);
-        setTotalFunds(Math.round(total * 100) / 100);
-      } else {
-        setTotalFunds(0);
-      }
-
-      // Auth + demandes "pending" + potentiel perso (parrain)
-      const { data: authUser } = await supabase.auth.getUser();
-      const uid = authUser?.user?.id;
-      setIsLoggedIn(!!uid);
-
-      if (uid) {
-        const { count: pend } = await supabase
-          .from("sponsorships")
+        supabase.from("sponsorships")
           .select("*", { count: "exact", head: true })
-          .eq("status", "pending")
-          .or(`runner_id.eq.${uid},sponsor_id.eq.${uid}`);
-        setPendingMine(pend || 0);
+          .eq("status", "accepted"),
 
-        // Potentiel du parrain connecté (Σ pledge_per_km × expected_km des parrainages ACCEPTÉS)
-        const { data: mine } = await supabase
-          .from("sponsorships")
+        supabase.from("profiles")
+          .select("id, full_name")
+          .eq("role", "runner")
+          .not("full_name", "is", null),
+
+        supabase.from("sponsorships")
+          .select("runner_id")
+          .eq("status", "accepted"),
+
+        supabase.from("sponsorships")
           .select("pledge_per_km, runner:runner_id ( expected_km )")
-          .eq("status", "accepted")
-          .eq("sponsor_id", uid);
+          .eq("status", "accepted"),
 
-        const myTotal = (mine || []).reduce((sum: number, s: any) => {
+        supabase.auth.getUser(),
+      ]);
+
+      if (cancelled) return;
+
+      // Profils
+      const profilesData = profilesRes.data || [];
+      // Parrainages acceptés (compteur)
+      const acceptedCount = acceptedCountRes.count || 0;
+
+      // Runners en attente (sans parrain accepté)
+      const allRunners = allRunnersRes.data || [];
+      const sponsoredRunners = sponsoredRunnersRes.data || [];
+      const sponsoredSet = new Set(sponsoredRunners.map((r: any) => r.runner_id));
+      const waiting = allRunners.filter((r: any) => !sponsoredSet.has(r.id));
+      const waitingLen = waiting.length;
+
+      // Total potentiel public
+      const rows = totalRowsRes.data || [];
+      const total = rows.reduce((sum: number, s: any) => {
+        const pledge = Number(s?.pledge_per_km) || 0;
+        const km = Number(s?.runner?.expected_km) || 0;
+        const line = pledge * km;
+        return sum + (Number.isFinite(line) ? line : 0);
+      }, 0);
+
+      // Auth
+      const uid = authRes?.data?.user?.id as string | undefined;
+      const loggedIn = !!uid;
+
+      // Si connecté : récupérer en // le pending et le potentiel perso
+      let pendingCount = 0;
+      let myPotential = null as number | null;
+
+      if (loggedIn) {
+        const [pendingRes, mineRes] = await Promise.all([
+          supabase
+            .from("sponsorships")
+            .select("*", { count: "exact", head: true })
+            .eq("status", "pending")
+            .or(`runner_id.eq.${uid},sponsor_id.eq.${uid}`),
+
+          supabase
+            .from("sponsorships")
+            .select("pledge_per_km, runner:runner_id ( expected_km )")
+            .eq("status", "accepted")
+            .eq("sponsor_id", uid),
+        ]);
+
+        pendingCount = pendingRes.count || 0;
+
+        const mine = mineRes.data || [];
+        const myTotal = mine.reduce((sum: number, s: any) => {
           const pledge = Number(s?.pledge_per_km) || 0;
           const km = Number(s?.runner?.expected_km) || 0;
           const line = pledge * km;
           return sum + (Number.isFinite(line) ? line : 0);
         }, 0);
-
-        setSponsorPotential(Math.round(myTotal * 100) / 100);
-      } else {
-        setPendingMine(0);
-        setSponsorPotential(null);
+        myPotential = Math.round(myTotal * 100) / 100;
       }
+
+      if (cancelled) return;
+
+      // Batch update des états (React 18 batche déjà, mais on garde clair)
+      setProfiles(profilesData);
+      setSponsorshipCount(acceptedCount);
+      setWaitingCount(waitingLen);
+      setTotalFunds(Math.round(total * 100) / 100);
+      setIsLoggedIn(loggedIn);
+      setPendingMine(pendingCount);
+      setSponsorPotential(myPotential);
     };
 
     fetchData();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   // Afficher la pop-up de conclusion à chaque rafraîchissement
@@ -368,7 +395,7 @@ export default function Home() {
           <img src="/media/watermelon.png" alt="Logo Gaza" className="mx-auto mb-5 h-12 w-auto" />
           <motion.h2 className="text-3xl font-bold mb-8 text-gray-900">Pourquoi cette marche ?</motion.h2>
 
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-5 md:gap-6">
             <Card icon={<Users className="w-10 h-10 mx-auto text-green-600" />} title="Solidarité" text="Unir nos pas pour soutenir Gaza et montrer notre engagement." />
             <Card icon={<Heart className="w-10 h-10 mx-auto text-red-600" />} title="Santé & Engagement" text="Prendre soin de soi tout en marchant pour une cause juste." />
             <Card icon={<Globe className="w-10 h-10 mx-auto text-black" />} title="Visibilité" text="Donner une voix à Gaza à travers chaque kilomètre parcouru." />
@@ -600,29 +627,31 @@ function ConclusionPopup({
         onClick={(e) => e.stopPropagation()}
       >
         <div className="h-1.5 w-full bg-gradient-to-r from-red-600 via-black to-green-600" />
+
         <div className="bg-white p-5 sm:p-6">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex items-center gap-2">
-              <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-green-600 via-black to-red-600 grid place-items-center">
-                <Radio className="h-5 w-5 text-white" />
-              </div>
-              <h3 id="final-title" className="text-lg font-extrabold text-gray-900">
-                La marche est terminée
-              </h3>
+          {/* Bouton fermer (absolu) */}
+          <button
+            onClick={onClose}
+            aria-label="Fermer"
+            className="absolute right-3 top-3 rounded-xl p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition"
+          >
+            <X className="h-5 w-5" />
+          </button>
+
+          {/* En-tête CENTRÉ */}
+          <div className="flex flex-col items-center text-center gap-2 mt-1">
+            <div className="h-9 w-9 rounded-2xl bg-gradient-to-br from-green-600 via-black to-red-600 grid place-items-center">
+              <Radio className="h-5 w-5 text-white" />
             </div>
-            <button
-              onClick={onClose}
-              aria-label="Fermer"
-              className="rounded-xl p-1.5 text-gray-500 hover:text-gray-700 hover:bg-gray-100 transition"
-            >
-              <X className="h-5 w-5" />
-            </button>
+            <h3 id="final-title" className="text-lg font-extrabold text-gray-900">
+              La marche est terminée
+            </h3>
           </div>
 
           {/* Message principal */}
-          <p className="mt-3 text-sm text-gray-700 leading-snug">
-            Lyan a marché <strong>172 km</strong> en <strong>45h</strong> sans s’arrêter. Un immense merci
-            à toutes et tous pour votre participation et votre soutien ❤️🇵🇸
+          <p className="mt-3 text-sm text-gray-700 leading-snug text-center">
+            Lyan a marché <strong>172 km</strong> en <strong>45h</strong> sans s’arrêter.
+            Un immense merci à toutes et tous pour votre participation et votre soutien ❤️🇵🇸
           </p>
 
           {/* Bloc potentiel parrain */}
